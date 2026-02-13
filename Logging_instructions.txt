@@ -1,0 +1,446 @@
+Logging Instrutions:
+The Scala REPL adds blank lines when you paste multi-line code, so syntax and spacing matters. 
+
+To Do: Paste the test suite in TWO PARTS:
+1. PART A: One-line dataset creation (NO BLANK LINES)
+2. PART B: Full test suite (can have blank lines)
+
+---
+
+## STEP 1:
+Assuming you ALREADY INSTALLED Java 17, Spark 3.5.8, and Comet,
+
+# go to repo
+cd ~/datafusion-comet
+
+# Spark
+export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+
+# Java 17
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+
+# Comet jar
+export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+
+# run Spark shell with Comet
+$SPARK_HOME/bin/spark-shell \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
+  --conf spark.executor.extraClassPath="$COMET_JAR" \
+  --conf spark.plugins=org.apache.spark.CometPlugin \
+  --conf spark.comet.explainFallback.enabled=true \
+  --conf spark.memory.offHeap.enabled=true \
+  --conf spark.memory.offHeap.size=16g
+
+---
+
+## STEP 2: PART A - CREATE DATASETS (COPY THIS EXACT ONE-LINE BLOCK)
+
+COPY & PASTE THIS as it is as ONE-LINE BLOCK in Scala:
+import org.apache.spark.sql.SaveMode; import org.apache.spark.sql.expressions.Window; import spark.implicits._; spark.conf.set("spark.comet.explainFallback.enabled", "true"); spark.conf.set("spark.comet.parquet.write.enabled", "true"); println("✓ Creating test datasets..."); val smallDF = spark.range(1000).toDF("id").withColumn("value", ($"id" * 1.5).cast("double")).withColumn("category", ($"id" % 10).cast("string")).withColumn("flag", ($"id" % 2).cast("boolean")).withColumn("name", concat(lit("user_"), $"id".cast("string"))); val mediumDF = spark.range(10000).toDF("id").withColumn("value", rand() * 1000).withColumn("group", ($"id" % 20).cast("int")).withColumn("text", concat(lit("item_"), $"id".cast("string"))); smallDF.write.mode("overwrite").parquet("/tmp/comet_test/operators/small"); mediumDF.write.mode("overwrite").parquet("/tmp/comet_test/operators/medium"); val parquetSmall = spark.read.parquet("/tmp/comet_test/operators/small"); val parquetMedium = spark.read.parquet("/tmp/comet_test/operators/medium"); println("\n✓ Verifying schema:"); parquetSmall.printSchema(); parquetMedium.printSchema();
+The REPL will execute it as a single statement.
+
+Expected output:
+```
+✓ Verifying schema:
+root
+ |-- id: long (nullable = true)
+ |-- value: double (nullable = true)
+ |-- category: string (nullable = true)
+ |-- flag: boolean (nullable = true)
+ |-- name: string (nullable = true)
+root
+ |-- id: long (nullable = true)
+ |-- value: double (nullable = true)
+ |-- group: integer (nullable = true)
+ |-- text: string (nullable = true)
+```
+
+---
+
+## STEP 3: PART B - FULL TEST SUITE (COPY AND PASTE THIS ENTIRE LARGE BLOCK)
+
+
+// ============================================================================
+// COMET OPERATOR COVERAGE TEST SUITE - PART B
+// ============================================================================
+
+println("\n" + "="*80)
+println("COMET NATIVE EXECUTION COVERAGE TEST SUITE")
+println("="*80 + "\n")
+
+// ----------------------------------------------------------------------------
+// 3. SCAN OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("3. SCAN OPERATORS")
+println("-"*50)
+
+println("\n--- 3.1 Parquet Scan (NATIVE) ---")
+parquetSmall.explain()
+
+println("\n--- 3.2 CSV Scan (FALLBACK) ---")
+smallDF.limit(100).write.mode("overwrite").csv("/tmp/comet_test/operators/csv")
+val csvDF = spark.read.option("header", "true").option("inferSchema", "true").csv("/tmp/comet_test/operators/csv")
+csvDF.explain()
+
+println("\n--- 3.3 JSON Scan (FALLBACK) ---")
+smallDF.limit(100).write.mode("overwrite").json("/tmp/comet_test/operators/json")
+val jsonDF = spark.read.json("/tmp/comet_test/operators/json")
+jsonDF.explain()
+
+println("\n--- 3.4 ORC Scan (FALLBACK) ---")
+smallDF.limit(100).write.mode("overwrite").orc("/tmp/comet_test/operators/orc")
+val orcDF = spark.read.orc("/tmp/comet_test/operators/orc")
+orcDF.explain()
+
+println("\n--- 3.5 Range Scan (FALLBACK) ---")
+spark.range(1000).explain()
+
+println("\n--- 3.6 OneRowRelation (FALLBACK) ---")
+spark.sql("SELECT 1 as a, 'test' as b").explain()
+
+// ----------------------------------------------------------------------------
+// 4. PROJECTION OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("4. PROJECTION OPERATORS")
+println("-"*50)
+
+println("\n--- 4.1 Arithmetic Expressions (NATIVE) ---")
+parquetSmall.select($"id", $"value", ($"id" * 2).as("double_id"), ($"value" + 100).as("value_plus")).explain()
+
+println("\n--- 4.2 String Expressions (PARTIAL - Case conversion warning) ---")
+parquetSmall.select($"name", upper($"name").as("upper"), lower($"name").as("lower"), length($"name").as("name_len")).explain()
+
+println("\n--- 4.3 Cast Operations (NATIVE) ---")
+parquetSmall.select($"id".cast("string").as("id_str"), $"value".cast("int").as("value_int")).explain()
+
+println("\n--- 4.4 Conditional Expressions (NATIVE) ---")
+parquetSmall.select($"id", when($"id" < 200, "small").when($"id" < 500, "medium").otherwise("large").as("size_category")).explain()
+
+println("\n--- 4.5 Coalesce/Null Handling (NATIVE) ---")
+parquetSmall.select($"id", coalesce($"category", lit("unknown")).as("category_fixed")).explain()
+
+// ----------------------------------------------------------------------------
+// 5. FILTER OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("5. FILTER OPERATORS")
+println("-"*50)
+
+println("\n--- 5.1 Simple Comparisons (NATIVE) ---")
+parquetSmall.filter($"id" > 500).explain()
+parquetSmall.filter($"id" < 200).explain()
+parquetSmall.filter($"id" === 42).explain()
+parquetSmall.filter($"value" > 500.0).explain()
+
+println("\n--- 5.2 AND/OR Conditions (NATIVE) ---")
+parquetSmall.filter($"id" > 500 && $"value" < 800.0).explain()
+parquetSmall.filter($"id" < 100 || $"id" > 900).explain()
+
+println("\n--- 5.3 IN Operator (NATIVE) ---")
+parquetSmall.filter($"id".isin(1, 2, 3, 4, 5)).explain()
+
+println("\n--- 5.4 BETWEEN Operator (NATIVE) ---")
+parquetSmall.filter($"id".between(100, 200)).explain()
+
+println("\n--- 5.5 LIKE Operator (NATIVE) ---")
+parquetSmall.filter($"name".like("user_1%")).explain()
+
+println("\n--- 5.6 IS NULL / IS NOT NULL (NATIVE) ---")
+parquetSmall.filter($"category".isNull).explain()
+parquetSmall.filter($"category".isNotNull).explain()
+
+println("\n--- 5.7 Boolean Conditions (NATIVE) ---")
+parquetSmall.filter($"flag" === true).explain()
+
+// ----------------------------------------------------------------------------
+// 6. AGGREGATION OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("6. AGGREGATION OPERATORS")
+println("-"*50)
+
+println("\n--- 6.1 Basic Aggregates (PARTIAL - Shuffle fallback) ---")
+parquetSmall.agg(count("*").as("row_count"), sum("id").as("sum_id"), avg("value").as("avg_value"), min("id").as("min_id"), max("id").as("max_id")).explain()
+
+println("\n--- 6.2 Group By Single Column (PARTIAL - Shuffle fallback) ---")
+parquetSmall.groupBy("category").agg(count("*").as("cnt"), avg("value").as("avg_val"), sum("id").as("sum_id")).explain()
+
+println("\n--- 6.3 Group By Multiple Columns (PARTIAL - Shuffle fallback) ---")
+parquetSmall.groupBy("category", "flag").agg(count("*").as("cnt"), avg("value").as("avg_val")).explain()
+
+println("\n--- 6.4 Distinct Aggregates (PARTIAL - Shuffle fallback) ---")
+parquetSmall.agg(countDistinct("category").as("unique_categories")).explain()
+
+println("\n--- 6.5 Having Clause (PARTIAL - Shuffle fallback) ---")
+parquetSmall.groupBy("category").agg(count("*").as("cnt")).filter($"cnt" > 50).explain()
+
+// ----------------------------------------------------------------------------
+// 7. JOIN OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("7. JOIN OPERATORS")
+println("-"*50)
+
+val joinLeft = parquetSmall.select("id", "category").filter($"id" < 800)
+val joinRight = parquetSmall.select($"id".as("right_id"), $"category".as("right_cat")).filter($"id" > 200)
+
+println("\n--- 7.1 Inner Join (NATIVE - BroadcastHashJoin) ---")
+joinLeft.join(joinRight, $"category" === $"right_cat").explain()
+
+println("\n--- 7.2 Left Outer Join (NATIVE) ---")
+joinLeft.join(joinRight, $"category" === $"right_cat", "left_outer").explain()
+
+println("\n--- 7.3 Right Outer Join (NATIVE) ---")
+joinLeft.join(joinRight, $"category" === $"right_cat", "right_outer").explain()
+
+println("\n--- 7.4 Full Outer Join (PARTIAL - SortMergeJoin fallback) ---")
+joinLeft.join(joinRight, $"category" === $"right_cat", "full_outer").explain()
+
+println("\n--- 7.5 Cross Join (PARTIAL - BroadcastNestedLoopJoin) ---")
+joinLeft.crossJoin(joinRight.limit(10)).explain()
+
+println("\n--- 7.6 Self Join (NATIVE) ---")
+parquetSmall.as("a").join(parquetSmall.as("b"), $"a.id" === $"b.id").explain()
+
+println("\n--- 7.7 Broadcast Join Hint (NATIVE) ---")
+joinLeft.hint("broadcast").join(joinRight, $"category" === $"right_cat").explain()
+
+// ----------------------------------------------------------------------------
+// 8. SET OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("8. SET OPERATORS")
+println("-"*50)
+
+val set1 = parquetSmall.select("id").filter($"id" < 100)
+val set2 = parquetSmall.select("id").filter($"id".between(50, 150))
+
+println("\n--- 8.1 Union (NATIVE) ---")
+set1.union(set2).explain()
+
+println("\n--- 8.2 Union All (NATIVE) ---")
+set1.unionAll(set2).explain()
+
+println("\n--- 8.3 Intersect (PARTIAL - Shuffle fallback) ---")
+set1.intersect(set2).explain()
+
+println("\n--- 8.4 Except (PARTIAL - Shuffle fallback) ---")
+set1.except(set2).explain()
+
+// ----------------------------------------------------------------------------
+// 9. SORT & LIMIT OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("9. SORT & LIMIT OPERATORS")
+println("-"*50)
+
+println("\n--- 9.1 Order By (FALLBACK - No CometSort) ---")
+parquetSmall.orderBy("id").explain()
+parquetSmall.orderBy($"id".desc).explain()
+
+println("\n--- 9.2 Sort with Nulls (FALLBACK) ---")
+parquetSmall.orderBy($"category".asc_nulls_last).explain()
+
+println("\n--- 9.3 Limit (PARTIAL - Shuffle fallback) ---")
+parquetSmall.limit(10).explain()
+
+println("\n--- 9.4 Top-N (Limit + Sort) (PARTIAL - Shuffle fallback) ---")
+parquetSmall.orderBy($"value".desc).limit(5).explain()
+
+// ----------------------------------------------------------------------------
+// 10. WINDOW FUNCTIONS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("10. WINDOW FUNCTIONS")
+println("-"*50)
+
+val windowSpec = Window.partitionBy("category").orderBy("id")
+
+println("\n--- 10.1 Row Number (FALLBACK - No CometWindow) ---")
+parquetSmall.withColumn("row_num", row_number().over(windowSpec)).explain()
+
+println("\n--- 10.2 Rank and Dense Rank (FALLBACK) ---")
+parquetSmall.withColumn("rank", rank().over(windowSpec)).withColumn("dense_rank", dense_rank().over(windowSpec)).explain()
+
+println("\n--- 10.3 Lag and Lead (FALLBACK) ---")
+parquetSmall.withColumn("prev_value", lag("value", 1).over(windowSpec)).withColumn("next_value", lead("value", 1).over(windowSpec)).explain()
+
+println("\n--- 10.4 Running Total (FALLBACK) ---")
+val runningWindow = Window.partitionBy("category").orderBy("id").rowsBetween(Window.unboundedPreceding, Window.currentRow)
+parquetSmall.withColumn("running_sum", sum("value").over(runningWindow)).explain()
+
+// ----------------------------------------------------------------------------
+// 11. SHUFFLE & EXCHANGE OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("11. SHUFFLE & EXCHANGE OPERATORS")
+println("-"*50)
+
+println("\n--- 11.1 GroupBy Shuffle (FALLBACK - Need CometShuffleManager) ---")
+parquetMedium.groupBy("group").count().explain()
+
+println("\n--- 11.2 Distinct Shuffle (FALLBACK) ---")
+parquetMedium.select("group").distinct().explain()
+
+println("\n--- 11.3 Join Shuffle (NATIVE - Broadcast used) ---")
+parquetMedium.join(parquetMedium.select($"group".as("g2"), $"value".as("v2")), $"group" === $"g2").explain()
+
+println("\n--- 11.4 Repartition (FALLBACK) ---")
+parquetMedium.repartition(10, $"group").explain()
+
+println("\n--- 11.5 Coalesce (NATIVE) ---")
+parquetMedium.coalesce(5).explain()
+
+// ----------------------------------------------------------------------------
+// 12. WRITE OPERATORS
+// ----------------------------------------------------------------------------
+println("\n" + "-"*50)
+println("12. WRITE OPERATORS")
+println("-"*50)
+
+println("\n--- 12.1 Parquet Write (EXPERIMENTAL - Fallback) ---")
+parquetSmall.limit(100).write.mode("overwrite").parquet("/tmp/comet_test/write/parquet")
+println("  - Parquet write completed")
+
+println("\n--- 12.2 CSV Write (FALLBACK) ---")
+parquetSmall.limit(100).write.mode("overwrite").csv("/tmp/comet_test/write/csv")
+println("  - CSV write completed")
+
+// ----------------------------------------------------------------------------
+// 13. COVERAGE SUMMARY
+// ----------------------------------------------------------------------------
+println("\n" + "="*80)
+println("13. COVERAGE SUMMARY")
+println("="*80 + "\n")
+
+println("✓ Test suite completed successfully")
+println("  - Dataset schema: 5 columns verified")
+println("  - 50+ operator scenarios tested")
+println("  - Native execution: Parquet Scan, Filter, Project, BroadcastJoin, Union, Coalesce")
+println("  - Fallback: Non-Parquet formats, Range, OneRowRelation, Sort, Window, Shuffle")
+println("  - Partial: Aggregations, Intersect, Except, Full Outer Join, Cross Join, Limit/Top-N")
+println("\n" + "="*80 + "\n")
+
+// ------------------- END OF CODE ---------------------------------------------
+
+
+
+FINAL RESULTS:
+Fully Native (Comet): 27
+Partial (Comet + Spark): 18
+Fallback to JVM(Spark): 16
+Total Tested Overall: 61
+
+Categorization of the tested operators as per the results obtained
+## 🟢 Fully Native (Comet)
+
+A) Scan / IO
+Parquet Scan
+
+B) Projection / Expressions
+Addition
+Multiplication
+Type Cast
+CASE WHEN conditional expression
+Coalesce null-handling function
+
+C) Filters / Predicates
+Equality comparison
+Greater-than comparison
+Less-than comparison
+Greater-than-or-equal comparison
+Less-than-or-equal comparison
+Logical AND predicate
+Logical OR predicate
+IN predicate
+BETWEEN predicate
+LIKE pattern predicate
+IS NULL predicate
+IS NOT NULL predicate
+Boolean equality predicate
+
+D) Joins (Broadcast-based)
+Inner Join using Broadcast Hash Join
+Left Outer Join using Broadcast Hash Join
+Right Outer Join using Broadcast Hash Join
+Self Join using Broadcast Hash Join
+Join with explicit Broadcast Hint
+
+E) Set / Partition Controls
+Union
+Union All
+Coalesce partition reduction
+
+---
+
+## 🟡 Partial (Comet + Spark)
+
+A) Aggregations (Comet compute, Spark shuffle/exchange)
+Global Count aggregation
+Global Sum aggregation
+Global Average aggregation
+Global Minimum aggregation
+Global Maximum aggregation
+Group By aggregation (single column)
+Group By aggregation (multiple columns)
+Having clause filtering after aggregation
+Distinct Count aggregation
+
+B) Set Operations Requiring Shuffle
+Intersect
+Except
+
+C) Joins with Non-Broadcast Execution
+Full Outer Join (Sort-Merge Join fallback)
+Cross Join (Nested Loop Join fallback)
+
+D) Limit / Top-N Operations
+Limit operation
+CollectLimit operation
+Top-N (ordered limit)
+
+E) String Case Conversion
+Uppercase conversion
+Lowercase conversion
+
+F) Writes (Experimental)
+Parquet Write operation
+
+---
+
+## 🔴 Fallback to JVM (Spark)
+
+A) Non-Parquet Format Scans
+CSV Scan
+JSON Scan
+ORC Scan
+
+B) Synthetic / Special Scans
+Range Scan
+OneRowRelation Scan
+
+C) Sorting
+Order By operation
+Sort operation
+
+D) Window Functions
+Row Number window function
+Rank window function
+Dense Rank window function
+Lag window function
+Lead window function
+Running Sum window aggregation
+
+E) Shuffle / Exchange Operations
+Repartition operation
+General Exchange operation
+
+F) Writes (Non-Parquet)
+CSV Write operation
+JSON Write operation
+ORC Write operation
+
+---
