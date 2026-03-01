@@ -1,0 +1,1897 @@
+(base) pranavchintareddy@Pranavs-MacBook-Pro-3 ~ % export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+(base) pranavchintareddy@Pranavs-MacBook-Pro-3 ~ % export OUT=~/tpcds/sf1_parquet
+(base) pranavchintareddy@Pranavs-MacBook-Pro-3 ~ % export TPCDS_QDIR=~/spark-sql-perf/src/main/resources/tpcds_2_4
+(base) pranavchintareddy@Pranavs-MacBook-Pro-3 ~ % ls "$OUT" | wc -l
+ls "$OUT" | head
+      24
+call_center
+catalog_page
+catalog_returns
+catalog_sales
+customer
+customer_address
+customer_demographics
+date_dim
+household_demographics
+income_band
+(base) pranavchintareddy@Pranavs-MacBook-Pro-3 ~ % export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export COMET_JAR=$(ls ~/datafusion-comet/spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+echo $COMET_JAR
+/Users/pranavchintareddy/datafusion-comet/spark/target/comet-spark-spark3.5_2.12-0.14.0-SNAPSHOT.jar
+(base) pranavchintareddy@Pranavs-MacBook-Pro-3 ~ % $SPARK_HOME/bin/spark-shell \
+  --driver-memory 12g \
+  --executor-memory 12g \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
+  --conf spark.executor.extraClassPath="$COMET_JAR" \
+  --conf spark.plugins=org.apache.spark.CometPlugin \
+  --conf spark.comet.enabled=true \
+  --conf spark.comet.explainFallback.enabled=true \
+  --conf spark.comet.caseConversion.enabled=true \
+  --conf spark.comet.operator.DataWritingCommandExec.allowIncompatible=true \
+  --conf spark.comet.operator.WindowExec.allowIncompatible=true \
+  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
+  --conf spark.sql.adaptive.enabled=false \
+  --conf spark.sql.shuffle.partitions=8 \
+  --conf spark.sql.autoBroadcastJoinThreshold=-1 \
+  --conf spark.memory.offHeap.enabled=true \
+  --conf spark.memory.offHeap.size=32g \
+  --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager \
+  --conf spark.comet.expression.Cast.allowIncompatible=true
+26/02/28 19:19:07 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+Spark context Web UI available at http://dhcp-acadmin-204-8-153-28.bu.edu:4040
+Spark context available as 'sc' (master = local[*], app id = local-1772324353714).
+Spark session available as 'spark'.
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 3.5.8
+      /_/
+         
+Using Scala version 2.12.18 (OpenJDK 64-Bit Server VM, Java 17.0.18)
+Type in expressions to have them evaluated.
+Type :help for more information.
+
+scala> println(sys.env("OUT"))
+/Users/pranavchintareddy/tpcds/sf1_parquet
+
+scala> println(sys.env("TPCDS_QDIR"))
+/Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4
+
+scala> val base = sys.env("OUT")
+base: String = /Users/pranavchintareddy/tpcds/sf1_parquet
+
+scala> 
+
+scala> val tables = Seq(
+     |   "call_center","catalog_page","catalog_returns","catalog_sales",
+     |   "customer","customer_address","customer_demographics","date_dim",
+     |   "household_demographics","income_band","inventory","item","promotion",
+     |   "reason","ship_mode","store","store_returns","store_sales",
+     |   "time_dim","warehouse","web_page","web_returns","web_sales","web_site"
+     | )
+tables: Seq[String] = List(call_center, catalog_page, catalog_returns, catalog_sales, customer, customer_address, customer_demographics, date_dim, household_demographics, income_band, inventory, item, promotion, reason, ship_mode, store, store_returns, store_sales, time_dim, warehouse, web_page, web_returns, web_sales, web_site)
+
+scala> 
+
+scala> tables.foreach { t =>
+     |   spark.read.parquet(s"$base/$t").createOrReplaceTempView(t)
+     | }
+26/02/28 19:21:52 INFO core/src/lib.rs: Comet native library version 0.14.0 initialized
+26/02/28 19:21:52 WARN SparkStringUtils: Truncated the string representation of a plan since it was too large. This behavior can be adjusted by setting 'spark.sql.debug.maxToStringFields'.
+
+scala> println("OK: TPC-DS views ready")
+OK: TPC-DS views ready
+
+scala> import java.nio.file.{Files, Paths}
+import java.nio.file.{Files, Paths}
+
+scala> import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters._
+
+scala> import scala.io.Source
+import scala.io.Source
+
+scala> 
+
+scala> val qdir = Paths.get(sys.env("TPCDS_QDIR"))
+qdir: java.nio.file.Path = /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4
+
+scala> 
+
+scala> val qfiles = Files.list(qdir).iterator().asScala.filter(p => p.getFileName.toString.endsWith(".sql")).toVector.sortBy(_.getFileName.toString) 
+qfiles: scala.collection.immutable.Vector[java.nio.file.Path] = Vector(/Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q1.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q10.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q11.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q12.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q13.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q14a.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q14b.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q15.sql, /Users/pranavchintareddy/spark-sql-perf/src/main/resources/tpcds_2_4/q16.sq...
+
+scala> println(qfiles.size); println(qfiles.take(5).map(_.getFileName.toString).mkString(", "))
+105
+q1.sql, q10.sql, q11.sql, q12.sql, q13.sql
+
+scala> 
+
+scala> def readSql(p: java.nio.file.Path): String =
+     |   Source.fromFile(p.toFile).mkString
+readSql: (p: java.nio.file.Path)String
+
+scala> 
+
+scala> println(s"OK: loaded ${qfiles.size} TPC-DS SQL files")
+OK: loaded 105 TPC-DS SQL files
+
+scala> qfiles.foreach { p =>
+     |   val name = p.getFileName.toString.stripSuffix(".sql")
+     |   val t0 = System.nanoTime
+     |   spark.sql(readSql(p)).collect()
+     |   val secs = (System.nanoTime - t0) / 1e9
+     |   println(f"$name%-6s  $secs%8.3f s")
+     | }
+q1         3.973 s                                                              
+26/02/28 19:22:35 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometSinkPlaceHolder
++- CometTakeOrderedAndProject
+   +- CometHashAggregate
+      +- CometSinkPlaceHolder
+         +- CometExchange
+            +- CometHashAggregate
+               +- CometProject
+                  +- CometSortMergeJoin
+                     :- CometSort
+                     :  +- CometSinkPlaceHolder
+                     :     +- CometExchange
+                     :        +- CometProject
+                     :           +- CometSortMergeJoin
+                     :              :- CometSort
+                     :              :  +- CometSinkPlaceHolder
+                     :              :     +- CometColumnarExchange
+                     :              :        +- Project
+                     :              :           +- Filter
+                     :              :              +- SortMergeJoin
+                     :              :                 :-  SortMergeJoin [COMET: Unsupported join type ExistenceJoin(exists#1058)]
+                     :              :                 :  :- CometSortMergeJoin
+                     :              :                 :  :  :- CometSort
+                     :              :                 :  :  :  +- CometSinkPlaceHolder
+                     :              :                 :  :  :     +- CometExchange
+                     :              :                 :  :  :        +- CometFilter
+                     :              :                 :  :  :           +- CometScanWrapper
+                     :              :                 :  :  +- CometSort
+                     :              :                 :  :     +- CometSinkPlaceHolder
+                     :              :                 :  :        +- CometExchange
+                     :              :                 :  :           +- CometProject
+                     :              :                 :  :              +- CometSortMergeJoin
+                     :              :                 :  :                 :- CometSort
+                     :              :                 :  :                 :  +- CometSinkPlaceHolder
+                     :              :                 :  :                 :     +- CometExchange
+                     :              :                 :  :                 :        +- CometFilter
+                     :              :                 :  :                 :           +- CometScanWrapper
+                     :              :                 :  :                 +- CometSort
+                     :              :                 :  :                    +- CometSinkPlaceHolder
+                     :              :                 :  :                       +- CometExchange
+                     :              :                 :  :                          +- CometProject
+                     :              :                 :  :                             +- CometFilter
+                     :              :                 :  :                                +- CometScanWrapper
+                     :              :                 :  +- CometSort
+                     :              :                 :     +- CometSinkPlaceHolder
+                     :              :                 :        +- CometExchange
+                     :              :                 :           +- CometProject
+                     :              :                 :              +- CometSortMergeJoin
+                     :              :                 :                 :- CometSort
+                     :              :                 :                 :  +- CometSinkPlaceHolder
+                     :              :                 :                 :     +- CometExchange
+                     :              :                 :                 :        +- CometFilter
+                     :              :                 :                 :           +- CometScanWrapper
+                     :              :                 :                 +- CometSort
+                     :              :                 :                    +- CometSinkPlaceHolder
+                     :              :                 :                       +- CometExchange
+                     :              :                 :                          +- CometProject
+                     :              :                 :                             +- CometFilter
+                     :              :                 :                                +- CometScanWrapper
+                     :              :                 +- CometSort
+                     :              :                    +- CometSinkPlaceHolder
+                     :              :                       +- CometExchange
+                     :              :                          +- CometProject
+                     :              :                             +- CometSortMergeJoin
+                     :              :                                :- CometSort
+                     :              :                                :  +- CometSinkPlaceHolder
+                     :              :                                :     +- CometExchange
+                     :              :                                :        +- CometFilter
+                     :              :                                :           +- CometScanWrapper
+                     :              :                                +- CometSort
+                     :              :                                   +- CometSinkPlaceHolder
+                     :              :                                      +- CometExchange
+                     :              :                                         +- CometProject
+                     :              :                                            +- CometFilter
+                     :              :                                               +- CometScanWrapper
+                     :              +- CometSort
+                     :                 +- CometSinkPlaceHolder
+                     :                    +- CometExchange
+                     :                       +- CometProject
+                     :                          +- CometFilter
+                     :                             +- CometScanWrapper
+                     +- CometSort
+                        +- CometSinkPlaceHolder
+                           +- CometExchange
+                              +- CometFilter
+                                 +- CometScanWrapper
+
+Comet accelerated 81 out of 85 eligible operators (95%). Final plan contains 0 transitions between Spark and Comet.
+q10        3.549 s                                                              
+q11        8.127 s                                                              
+26/02/28 19:22:46 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q12        1.616 s
+26/02/28 19:22:48 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_sales_price#575))#2218 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:22:48 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_wholesale_cost#576))#2219 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q13        1.809 s                                                              
+q14a       6.505 s                                                              
+q14b       5.209 s                                                              
+q15        1.076 s
+26/02/28 19:23:02 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometHashAggregate
++- CometSinkPlaceHolder
+   +- CometColumnarExchange
+      +- HashAggregate
+         +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+            +- CometSinkPlaceHolder
+               +- CometExchange
+                  +- CometHashAggregate
+                     +- CometProject
+                        +- CometSortMergeJoin
+                           :- CometSort
+                           :  +- CometSinkPlaceHolder
+                           :     +- CometExchange
+                           :        +- CometProject
+                           :           +- CometSortMergeJoin
+                           :              :- CometSort
+                           :              :  +- CometSinkPlaceHolder
+                           :              :     +- CometExchange
+                           :              :        +- CometProject
+                           :              :           +- CometSortMergeJoin
+                           :              :              :- CometSort
+                           :              :              :  +- CometSinkPlaceHolder
+                           :              :              :     +- CometExchange
+                           :              :              :        +- CometSortMergeJoin
+                           :              :              :           :- CometProject
+                           :              :              :           :  +- CometSortMergeJoin
+                           :              :              :           :     :- CometSort
+                           :              :              :           :     :  +- CometSinkPlaceHolder
+                           :              :              :           :     :     +- CometExchange
+                           :              :              :           :     :        +- CometFilter
+                           :              :              :           :     :           +- CometScanWrapper
+                           :              :              :           :     +- CometSort
+                           :              :              :           :        +- CometSinkPlaceHolder
+                           :              :              :           :           +- CometExchange
+                           :              :              :           :              +- CometScanWrapper
+                           :              :              :           +- CometSort
+                           :              :              :              +- CometSinkPlaceHolder
+                           :              :              :                 +- CometExchange
+                           :              :              :                    +- CometScanWrapper
+                           :              :              +- CometSort
+                           :              :                 +- CometSinkPlaceHolder
+                           :              :                    +- CometExchange
+                           :              :                       +- CometProject
+                           :              :                          +- CometFilter
+                           :              :                             +- CometScanWrapper
+                           :              +- CometSort
+                           :                 +- CometSinkPlaceHolder
+                           :                    +- CometExchange
+                           :                       +- CometProject
+                           :                          +- CometFilter
+                           :                             +- CometScanWrapper
+                           +- CometSort
+                              +- CometSinkPlaceHolder
+                                 +- CometExchange
+                                    +- CometProject
+                                       +- CometFilter
+                                          +- CometScanWrapper
+
+Comet accelerated 55 out of 57 eligible operators (96%). Final plan contains 0 transitions between Spark and Comet.
+q16       24.717 s                                                              
+q17        2.084 s                                                              
+q18        1.668 s                                                              
+q19        1.437 s                                                              
+q2         1.007 s
+26/02/28 19:23:33 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q20        0.655 s
+q21        5.512 s                                                              
+q22        4.823 s                                                              
+q23a       3.630 s                                                              
+q23b       4.292 s                                                              
+q24a       2.145 s                                                              
+q24b       2.011 s                                                              
+q25        2.543 s                                                              
+26/02/28 19:23:59 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(cs_list_price#154))#8957 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:23:59 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(cs_coupon_amt#161))#8958 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:23:59 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(cs_sales_price#155))#8959 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q26        1.181 s                                                              
+26/02/28 19:24:00 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#572))#8993 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:00 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_coupon_amt#579))#8994 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:00 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_sales_price#573))#8995 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q27        2.214 s                                                              
+26/02/28 19:24:02 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#572))#9166 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:02 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#9063))#9169 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:02 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#9086))#9172 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:02 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#9109))#9175 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:02 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#9132))#9178 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:02 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#9155))#9181 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:02 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CartesianProduct
+:- CartesianProduct
+:  :- CartesianProduct
+:  :  :- CartesianProduct
+:  :  :  :-  CartesianProduct [COMET: CartesianProduct is not supported]
+:  :  :  :  :- CometHashAggregate
+:  :  :  :  :  +- CometSinkPlaceHolder
+:  :  :  :  :     +- CometColumnarExchange
+:  :  :  :  :        +- HashAggregate
+:  :  :  :  :           +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+:  :  :  :  :              +- CometSinkPlaceHolder
+:  :  :  :  :                 +- CometExchange
+:  :  :  :  :                    +- CometHashAggregate
+:  :  :  :  :                       +- CometProject
+:  :  :  :  :                          +- CometFilter
+:  :  :  :  :                             +- CometScanWrapper
+:  :  :  :  +- CometHashAggregate
+:  :  :  :     +- CometSinkPlaceHolder
+:  :  :  :        +- CometColumnarExchange
+:  :  :  :           +- HashAggregate
+:  :  :  :              +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+:  :  :  :                 +- CometSinkPlaceHolder
+:  :  :  :                    +- CometExchange
+:  :  :  :                       +- CometHashAggregate
+:  :  :  :                          +- CometProject
+:  :  :  :                             +- CometFilter
+:  :  :  :                                +- CometScanWrapper
+:  :  :  +- CometHashAggregate
+:  :  :     +- CometSinkPlaceHolder
+:  :  :        +- CometColumnarExchange
+:  :  :           +- HashAggregate
+:  :  :              +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+:  :  :                 +- CometSinkPlaceHolder
+:  :  :                    +- CometExchange
+:  :  :                       +- CometHashAggregate
+:  :  :                          +- CometProject
+:  :  :                             +- CometFilter
+:  :  :                                +- CometScanWrapper
+:  :  +- CometHashAggregate
+:  :     +- CometSinkPlaceHolder
+:  :        +- CometColumnarExchange
+:  :           +- HashAggregate
+:  :              +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+:  :                 +- CometSinkPlaceHolder
+:  :                    +- CometExchange
+:  :                       +- CometHashAggregate
+:  :                          +- CometProject
+:  :                             +- CometFilter
+:  :                                +- CometScanWrapper
+:  +- CometHashAggregate
+:     +- CometSinkPlaceHolder
+:        +- CometColumnarExchange
+:           +- HashAggregate
+:              +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+:                 +- CometSinkPlaceHolder
+:                    +- CometExchange
+:                       +- CometHashAggregate
+:                          +- CometProject
+:                             +- CometFilter
+:                                +- CometScanWrapper
++- CometHashAggregate
+   +- CometSinkPlaceHolder
+      +- CometColumnarExchange
+         +- HashAggregate
+            +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+               +- CometSinkPlaceHolder
+                  +- CometExchange
+                     +- CometHashAggregate
+                        +- CometProject
+                           +- CometFilter
+                              +- CometScanWrapper
+
+Comet accelerated 54 out of 71 eligible operators (76%). Final plan contains 0 transitions between Spark and Comet.
+q28        2.105 s                                                              
+q29        1.886 s                                                              
+q3         1.068 s                                                              
+q30        0.800 s
+q31        2.007 s                                                              
+26/02/28 19:24:10 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(cs_ext_discount_amt#10331))#10307 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q32        0.862 s
+q33        1.717 s                                                              
+q34        1.296 s                                                              
+26/02/28 19:24:14 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometSinkPlaceHolder
++- CometTakeOrderedAndProject
+   +- CometHashAggregate
+      +- CometSinkPlaceHolder
+         +- CometExchange
+            +- CometHashAggregate
+               +- CometProject
+                  +- CometSortMergeJoin
+                     :- CometSort
+                     :  +- CometSinkPlaceHolder
+                     :     +- CometExchange
+                     :        +- CometProject
+                     :           +- CometSortMergeJoin
+                     :              :- CometSort
+                     :              :  +- CometSinkPlaceHolder
+                     :              :     +- CometColumnarExchange
+                     :              :        +- Project
+                     :              :           +- Filter
+                     :              :              +- SortMergeJoin
+                     :              :                 :-  SortMergeJoin [COMET: Unsupported join type ExistenceJoin(exists#10717)]
+                     :              :                 :  :- CometSortMergeJoin
+                     :              :                 :  :  :- CometSort
+                     :              :                 :  :  :  +- CometSinkPlaceHolder
+                     :              :                 :  :  :     +- CometExchange
+                     :              :                 :  :  :        +- CometFilter
+                     :              :                 :  :  :           +- CometScanWrapper
+                     :              :                 :  :  +- CometSort
+                     :              :                 :  :     +- CometSinkPlaceHolder
+                     :              :                 :  :        +- CometExchange
+                     :              :                 :  :           +- CometProject
+                     :              :                 :  :              +- CometSortMergeJoin
+                     :              :                 :  :                 :- CometSort
+                     :              :                 :  :                 :  +- CometSinkPlaceHolder
+                     :              :                 :  :                 :     +- CometExchange
+                     :              :                 :  :                 :        +- CometFilter
+                     :              :                 :  :                 :           +- CometScanWrapper
+                     :              :                 :  :                 +- CometSort
+                     :              :                 :  :                    +- CometSinkPlaceHolder
+                     :              :                 :  :                       +- CometExchange
+                     :              :                 :  :                          +- CometProject
+                     :              :                 :  :                             +- CometFilter
+                     :              :                 :  :                                +- CometScanWrapper
+                     :              :                 :  +- CometSort
+                     :              :                 :     +- CometSinkPlaceHolder
+                     :              :                 :        +- CometExchange
+                     :              :                 :           +- CometProject
+                     :              :                 :              +- CometSortMergeJoin
+                     :              :                 :                 :- CometSort
+                     :              :                 :                 :  +- CometSinkPlaceHolder
+                     :              :                 :                 :     +- CometExchange
+                     :              :                 :                 :        +- CometFilter
+                     :              :                 :                 :           +- CometScanWrapper
+                     :              :                 :                 +- CometSort
+                     :              :                 :                    +- CometSinkPlaceHolder
+                     :              :                 :                       +- CometExchange
+                     :              :                 :                          +- CometProject
+                     :              :                 :                             +- CometFilter
+                     :              :                 :                                +- CometScanWrapper
+                     :              :                 +- CometSort
+                     :              :                    +- CometSinkPlaceHolder
+                     :              :                       +- CometExchange
+                     :              :                          +- CometProject
+                     :              :                             +- CometSortMergeJoin
+                     :              :                                :- CometSort
+                     :              :                                :  +- CometSinkPlaceHolder
+                     :              :                                :     +- CometExchange
+                     :              :                                :        +- CometFilter
+                     :              :                                :           +- CometScanWrapper
+                     :              :                                +- CometSort
+                     :              :                                   +- CometSinkPlaceHolder
+                     :              :                                      +- CometExchange
+                     :              :                                         +- CometProject
+                     :              :                                            +- CometFilter
+                     :              :                                               +- CometScanWrapper
+                     :              +- CometSort
+                     :                 +- CometSinkPlaceHolder
+                     :                    +- CometExchange
+                     :                       +- CometFilter
+                     :                          +- CometScanWrapper
+                     +- CometSort
+                        +- CometSinkPlaceHolder
+                           +- CometExchange
+                              +- CometFilter
+                                 +- CometScanWrapper
+
+Comet accelerated 80 out of 84 eligible operators (95%). Final plan contains 0 transitions between Spark and Comet.
+q35        1.458 s
+26/02/28 19:24:15 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q36        2.081 s                                                              
+q37        1.326 s                                                              
+q38        0.975 s
+q39a       7.135 s                                                              
+q39b       6.573 s                                                              
+q4         9.515 s                                                              
+q40        1.347 s
+q41        0.342 s
+q42        1.041 s                                                              
+q43        1.057 s
+26/02/28 19:24:47 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_profit#14429))#14405 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:47 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_profit#14429))#14405 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:47 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:47 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:47 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_profit#582))#14399 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:47 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_profit#14376))#14402 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:24:47 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometSinkPlaceHolder
++- CometTakeOrderedAndProject
+   +- CometProject
+      +- CometSortMergeJoin
+         :- CometSort
+         :  +- CometSinkPlaceHolder
+         :     +- CometExchange
+         :        +- CometProject
+         :           +- CometSortMergeJoin
+         :              :- CometSort
+         :              :  +- CometSinkPlaceHolder
+         :              :     +- CometColumnarExchange
+         :              :        +- Project
+         :              :           +- SortMergeJoin
+         :              :              :- Sort
+         :              :              :  +- Project
+         :              :              :     +- Filter
+         :              :              :        +- Window
+         :              :              :           +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+         :              :              :              +- CometSort
+         :              :              :                 +- CometSinkPlaceHolder
+         :              :              :                    +- CometColumnarExchange
+         :              :              :                       +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+         :              :              :                          +- CometSort
+         :              :              :                             +- CometFilter
+         :              :              :                                :  +- Subquery
+         :              :              :                                :     +- CometColumnarToRow
+         :              :              :                                :        +- CometHashAggregate
+         :              :              :                                :           +- CometExchange
+         :              :              :                                :              +- CometHashAggregate
+         :              :              :                                :                 +- CometProject
+         :              :              :                                :                    +- CometFilter
+         :              :              :                                :                       +- CometScan [native_iceberg_compat] parquet 
+         :              :              :                                +- CometHashAggregate
+         :              :              :                                   +- CometSinkPlaceHolder
+         :              :              :                                      +- CometExchange
+         :              :              :                                         +- CometHashAggregate
+         :              :              :                                            +- CometProject
+         :              :              :                                               +- CometFilter
+         :              :              :                                                  +- CometScanWrapper
+         :              :              +- Sort
+         :              :                 +- Project
+         :              :                    +- Filter
+         :              :                       +- Window
+         :              :                          +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+         :              :                             +- CometSort
+         :              :                                +- CometSinkPlaceHolder
+         :              :                                   +- CometColumnarExchange
+         :              :                                      +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+         :              :                                         +- CometSort
+         :              :                                            +- CometFilter
+         :              :                                               :  +- Subquery
+         :              :                                               :     +- CometColumnarToRow
+         :              :                                               :        +- CometHashAggregate
+         :              :                                               :           +- CometExchange
+         :              :                                               :              +- CometHashAggregate
+         :              :                                               :                 +- CometProject
+         :              :                                               :                    +- CometFilter
+         :              :                                               :                       +- CometScan [native_iceberg_compat] parquet 
+         :              :                                               +- CometHashAggregate
+         :              :                                                  +- CometSinkPlaceHolder
+         :              :                                                     +- CometExchange
+         :              :                                                        +- CometHashAggregate
+         :              :                                                           +- CometProject
+         :              :                                                              +- CometFilter
+         :              :                                                                 +- CometScanWrapper
+         :              +- CometSort
+         :                 +- CometSinkPlaceHolder
+         :                    +- CometExchange
+         :                       +- CometFilter
+         :                          +- CometScanWrapper
+         +- CometSort
+            +- CometSinkPlaceHolder
+               +- CometExchange
+                  +- CometFilter
+                     +- CometScanWrapper
+
+Comet accelerated 58 out of 74 eligible operators (78%). Final plan contains 2 transitions between Spark and Comet.
+q44        1.184 s
+26/02/28 19:24:48 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+TakeOrderedAndProject
++- HashAggregate
+   +- CometSinkPlaceHolder
+      +- CometColumnarExchange
+         +- HashAggregate
+            +- Project
+               +- Filter
+                  +-  SortMergeJoin [COMET: Unsupported join type ExistenceJoin(exists#14550)]
+                     :- CometSort
+                     :  +- CometSinkPlaceHolder
+                     :     +- CometExchange
+                     :        +- CometProject
+                     :           +- CometSortMergeJoin
+                     :              :- CometSort
+                     :              :  +- CometSinkPlaceHolder
+                     :              :     +- CometExchange
+                     :              :        +- CometProject
+                     :              :           +- CometSortMergeJoin
+                     :              :              :- CometSort
+                     :              :              :  +- CometSinkPlaceHolder
+                     :              :              :     +- CometExchange
+                     :              :              :        +- CometProject
+                     :              :              :           +- CometSortMergeJoin
+                     :              :              :              :- CometSort
+                     :              :              :              :  +- CometSinkPlaceHolder
+                     :              :              :              :     +- CometExchange
+                     :              :              :              :        +- CometProject
+                     :              :              :              :           +- CometSortMergeJoin
+                     :              :              :              :              :- CometSort
+                     :              :              :              :              :  +- CometSinkPlaceHolder
+                     :              :              :              :              :     +- CometExchange
+                     :              :              :              :              :        +- CometFilter
+                     :              :              :              :              :           +- CometScanWrapper
+                     :              :              :              :              +- CometSort
+                     :              :              :              :                 +- CometSinkPlaceHolder
+                     :              :              :              :                    +- CometExchange
+                     :              :              :              :                       +- CometFilter
+                     :              :              :              :                          +- CometScanWrapper
+                     :              :              :              +- CometSort
+                     :              :              :                 +- CometSinkPlaceHolder
+                     :              :              :                    +- CometExchange
+                     :              :              :                       +- CometFilter
+                     :              :              :                          +- CometScanWrapper
+                     :              :              +- CometSort
+                     :              :                 +- CometSinkPlaceHolder
+                     :              :                    +- CometExchange
+                     :              :                       +- CometProject
+                     :              :                          +- CometFilter
+                     :              :                             +- CometScanWrapper
+                     :              +- CometSort
+                     :                 +- CometSinkPlaceHolder
+                     :                    +- CometExchange
+                     :                       +- CometFilter
+                     :                          +- CometScanWrapper
+                     +- CometSort
+                        +- CometSinkPlaceHolder
+                           +- CometExchange
+                              +- CometProject
+                                 +- CometFilter
+                                    +- CometScanWrapper
+
+Comet accelerated 54 out of 60 eligible operators (90%). Final plan contains 0 transitions between Spark and Comet.
+q45        1.071 s
+q46        2.117 s                                                              
+26/02/28 19:24:51 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:24:51 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:24:51 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q47        4.467 s                                                              
+q48        1.203 s                                                              
+26/02/28 19:24:57 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:57 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:57 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:57 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:57 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:57 WARN WindowExec: No Partition Defined for Window operation! Moving all data to a single partition, this can cause serious performance degradation.
+26/02/28 19:24:57 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:24:57 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:24:57 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q49        2.061 s                                                              
+q5         2.403 s                                                              
+q50        1.488 s                                                              
+26/02/28 19:25:03 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:25:03 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:25:03 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:25:03 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+TakeOrderedAndProject
++- Filter
+   +-  Window [COMET: Partitioning and sorting specifications must be the same.]
+      +- CometSort
+         +- CometSinkPlaceHolder
+            +- CometExchange
+               +- CometProject
+                  +- CometSortMergeJoin
+                     :- CometSort
+                     :  +- CometSinkPlaceHolder
+                     :     +- CometColumnarExchange
+                     :        +- Project
+                     :           +-  Window [COMET: Partitioning and sorting specifications must be the same.]
+                     :              +- CometSort
+                     :                 +- CometSinkPlaceHolder
+                     :                    +- CometExchange
+                     :                       +- CometHashAggregate
+                     :                          +- CometSinkPlaceHolder
+                     :                             +- CometExchange
+                     :                                +- CometHashAggregate
+                     :                                   +- CometProject
+                     :                                      +- CometSortMergeJoin
+                     :                                         :- CometSort
+                     :                                         :  +- CometSinkPlaceHolder
+                     :                                         :     +- CometExchange
+                     :                                         :        +- CometFilter
+                     :                                         :           +- CometScanWrapper
+                     :                                         +- CometSort
+                     :                                            +- CometSinkPlaceHolder
+                     :                                               +- CometExchange
+                     :                                                  +- CometProject
+                     :                                                     +- CometFilter
+                     :                                                        +- CometScanWrapper
+                     +- CometSort
+                        +- CometSinkPlaceHolder
+                           +- CometColumnarExchange
+                              +- Project
+                                 +-  Window [COMET: Partitioning and sorting specifications must be the same.]
+                                    +- CometSort
+                                       +- CometSinkPlaceHolder
+                                          +- CometExchange
+                                             +- CometHashAggregate
+                                                +- CometSinkPlaceHolder
+                                                   +- CometExchange
+                                                      +- CometHashAggregate
+                                                         +- CometProject
+                                                            +- CometSortMergeJoin
+                                                               :- CometSort
+                                                               :  +- CometSinkPlaceHolder
+                                                               :     +- CometExchange
+                                                               :        +- CometFilter
+                                                               :           +- CometScanWrapper
+                                                               +- CometSort
+                                                                  +- CometSinkPlaceHolder
+                                                                     +- CometExchange
+                                                                        +- CometProject
+                                                                           +- CometFilter
+                                                                              +- CometScanWrapper
+
+Comet accelerated 51 out of 58 eligible operators (87%). Final plan contains 0 transitions between Spark and Comet.
+q51        1.888 s                                                              
+q52        0.942 s                                                              
+26/02/28 19:25:06 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q53        1.277 s                                                              
+q54        1.524 s                                                              
+q55        0.911 s
+q56        1.386 s                                                              
+26/02/28 19:25:11 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:25:11 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:25:11 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q57        2.186 s
+q58        1.898 s                                                              
+q59        1.205 s
+26/02/28 19:25:16 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(i_current_price#17416))#17381 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q6         1.159 s
+q60        1.409 s                                                              
+26/02/28 19:25:19 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+Project
++-  CartesianProduct [COMET: CartesianProduct is not supported]
+   :- CometHashAggregate
+   :  +- CometSinkPlaceHolder
+   :     +- CometExchange
+   :        +- CometHashAggregate
+   :           +- CometProject
+   :              +- CometSortMergeJoin
+   :                 :- CometSort
+   :                 :  +- CometSinkPlaceHolder
+   :                 :     +- CometExchange
+   :                 :        +- CometProject
+   :                 :           +- CometSortMergeJoin
+   :                 :              :- CometSort
+   :                 :              :  +- CometSinkPlaceHolder
+   :                 :              :     +- CometExchange
+   :                 :              :        +- CometProject
+   :                 :              :           +- CometSortMergeJoin
+   :                 :              :              :- CometSort
+   :                 :              :              :  +- CometSinkPlaceHolder
+   :                 :              :              :     +- CometExchange
+   :                 :              :              :        +- CometProject
+   :                 :              :              :           +- CometSortMergeJoin
+   :                 :              :              :              :- CometSort
+   :                 :              :              :              :  +- CometSinkPlaceHolder
+   :                 :              :              :              :     +- CometExchange
+   :                 :              :              :              :        +- CometProject
+   :                 :              :              :              :           +- CometSortMergeJoin
+   :                 :              :              :              :              :- CometSort
+   :                 :              :              :              :              :  +- CometSinkPlaceHolder
+   :                 :              :              :              :              :     +- CometExchange
+   :                 :              :              :              :              :        +- CometProject
+   :                 :              :              :              :              :           +- CometSortMergeJoin
+   :                 :              :              :              :              :              :- CometSort
+   :                 :              :              :              :              :              :  +- CometSinkPlaceHolder
+   :                 :              :              :              :              :              :     +- CometExchange
+   :                 :              :              :              :              :              :        +- CometFilter
+   :                 :              :              :              :              :              :           +- CometScanWrapper
+   :                 :              :              :              :              :              +- CometSort
+   :                 :              :              :              :              :                 +- CometSinkPlaceHolder
+   :                 :              :              :              :              :                    +- CometExchange
+   :                 :              :              :              :              :                       +- CometProject
+   :                 :              :              :              :              :                          +- CometFilter
+   :                 :              :              :              :              :                             +- CometScanWrapper
+   :                 :              :              :              :              +- CometSort
+   :                 :              :              :              :                 +- CometSinkPlaceHolder
+   :                 :              :              :              :                    +- CometExchange
+   :                 :              :              :              :                       +- CometProject
+   :                 :              :              :              :                          +- CometFilter
+   :                 :              :              :              :                             +- CometScanWrapper
+   :                 :              :              :              +- CometSort
+   :                 :              :              :                 +- CometSinkPlaceHolder
+   :                 :              :              :                    +- CometExchange
+   :                 :              :              :                       +- CometProject
+   :                 :              :              :                          +- CometFilter
+   :                 :              :              :                             +- CometScanWrapper
+   :                 :              :              +- CometSort
+   :                 :              :                 +- CometSinkPlaceHolder
+   :                 :              :                    +- CometExchange
+   :                 :              :                       +- CometFilter
+   :                 :              :                          +- CometScanWrapper
+   :                 :              +- CometSort
+   :                 :                 +- CometSinkPlaceHolder
+   :                 :                    +- CometExchange
+   :                 :                       +- CometProject
+   :                 :                          +- CometFilter
+   :                 :                             +- CometScanWrapper
+   :                 +- CometSort
+   :                    +- CometSinkPlaceHolder
+   :                       +- CometExchange
+   :                          +- CometProject
+   :                             +- CometFilter
+   :                                +- CometScanWrapper
+   +- CometHashAggregate
+      +- CometSinkPlaceHolder
+         +- CometExchange
+            +- CometHashAggregate
+               +- CometProject
+                  +- CometSortMergeJoin
+                     :- CometSort
+                     :  +- CometSinkPlaceHolder
+                     :     +- CometExchange
+                     :        +- CometProject
+                     :           +- CometSortMergeJoin
+                     :              :- CometSort
+                     :              :  +- CometSinkPlaceHolder
+                     :              :     +- CometExchange
+                     :              :        +- CometProject
+                     :              :           +- CometSortMergeJoin
+                     :              :              :- CometSort
+                     :              :              :  +- CometSinkPlaceHolder
+                     :              :              :     +- CometExchange
+                     :              :              :        +- CometProject
+                     :              :              :           +- CometSortMergeJoin
+                     :              :              :              :- CometSort
+                     :              :              :              :  +- CometSinkPlaceHolder
+                     :              :              :              :     +- CometExchange
+                     :              :              :              :        +- CometProject
+                     :              :              :              :           +- CometSortMergeJoin
+                     :              :              :              :              :- CometSort
+                     :              :              :              :              :  +- CometSinkPlaceHolder
+                     :              :              :              :              :     +- CometExchange
+                     :              :              :              :              :        +- CometFilter
+                     :              :              :              :              :           +- CometScanWrapper
+                     :              :              :              :              +- CometSort
+                     :              :              :              :                 +- CometSinkPlaceHolder
+                     :              :              :              :                    +- CometExchange
+                     :              :              :              :                       +- CometProject
+                     :              :              :              :                          +- CometFilter
+                     :              :              :              :                             +- CometScanWrapper
+                     :              :              :              +- CometSort
+                     :              :              :                 +- CometSinkPlaceHolder
+                     :              :              :                    +- CometExchange
+                     :              :              :                       +- CometProject
+                     :              :              :                          +- CometFilter
+                     :              :              :                             +- CometScanWrapper
+                     :              :              +- CometSort
+                     :              :                 +- CometSinkPlaceHolder
+                     :              :                    +- CometExchange
+                     :              :                       +- CometFilter
+                     :              :                          +- CometScanWrapper
+                     :              +- CometSort
+                     :                 +- CometSinkPlaceHolder
+                     :                    +- CometExchange
+                     :                       +- CometProject
+                     :                          +- CometFilter
+                     :                             +- CometScanWrapper
+                     +- CometSort
+                        +- CometSinkPlaceHolder
+                           +- CometExchange
+                              +- CometProject
+                                 +- CometFilter
+                                    +- CometScanWrapper
+
+Comet accelerated 131 out of 133 eligible operators (98%). Final plan contains 0 transitions between Spark and Comet.
+q61        2.676 s                                                              
+q62        0.991 s
+26/02/28 19:25:22 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q63        1.151 s                                                              
+q64        5.412 s                                                              
+q65        1.437 s                                                              
+q66        2.552 s                                                              
+26/02/28 19:25:33 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+TakeOrderedAndProject
++- Filter
+   +- Window
+      +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+         +- CometSort
+            +- CometSinkPlaceHolder
+               +- CometColumnarExchange
+                  +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+                     +- CometSort
+                        +- CometHashAggregate
+                           +- CometSinkPlaceHolder
+                              +- CometExchange
+                                 +- CometHashAggregate
+                                    +- CometExpand
+                                       +- CometProject
+                                          +- CometSortMergeJoin
+                                             :- CometSort
+                                             :  +- CometSinkPlaceHolder
+                                             :     +- CometExchange
+                                             :        +- CometProject
+                                             :           +- CometSortMergeJoin
+                                             :              :- CometSort
+                                             :              :  +- CometSinkPlaceHolder
+                                             :              :     +- CometExchange
+                                             :              :        +- CometProject
+                                             :              :           +- CometSortMergeJoin
+                                             :              :              :- CometSort
+                                             :              :              :  +- CometSinkPlaceHolder
+                                             :              :              :     +- CometExchange
+                                             :              :              :        +- CometFilter
+                                             :              :              :           +- CometScanWrapper
+                                             :              :              +- CometSort
+                                             :              :                 +- CometSinkPlaceHolder
+                                             :              :                    +- CometExchange
+                                             :              :                       +- CometProject
+                                             :              :                          +- CometFilter
+                                             :              :                             +- CometScanWrapper
+                                             :              +- CometSort
+                                             :                 +- CometSinkPlaceHolder
+                                             :                    +- CometExchange
+                                             :                       +- CometFilter
+                                             :                          +- CometScanWrapper
+                                             +- CometSort
+                                                +- CometSinkPlaceHolder
+                                                   +- CometExchange
+                                                      +- CometFilter
+                                                         +- CometScanWrapper
+
+Comet accelerated 42 out of 47 eligible operators (89%). Final plan contains 0 transitions between Spark and Comet.
+q67        2.724 s                                                              
+q68        2.202 s                                                              
+q69        1.430 s                                                              
+26/02/28 19:25:39 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_list_price#572))#19718 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:25:39 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_coupon_amt#579))#19719 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:25:39 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_sales_price#573))#19720 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q7         1.916 s                                                              
+26/02/28 19:25:41 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+26/02/28 19:25:41 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+TakeOrderedAndProject
++- Project
+   +- Window
+      +- CometSort
+         +- CometSinkPlaceHolder
+            +- CometExchange
+               +- CometHashAggregate
+                  +- CometSinkPlaceHolder
+                     +- CometExchange
+                        +- CometHashAggregate
+                           +- CometExpand
+                              +- CometProject
+                                 +- CometSortMergeJoin
+                                    :- CometSort
+                                    :  +- CometSinkPlaceHolder
+                                    :     +- CometExchange
+                                    :        +- CometProject
+                                    :           +- CometSortMergeJoin
+                                    :              :- CometSort
+                                    :              :  +- CometSinkPlaceHolder
+                                    :              :     +- CometExchange
+                                    :              :        +- CometFilter
+                                    :              :           +- CometScanWrapper
+                                    :              +- CometSort
+                                    :                 +- CometSinkPlaceHolder
+                                    :                    +- CometExchange
+                                    :                       +- CometProject
+                                    :                          +- CometFilter
+                                    :                             +- CometScanWrapper
+                                    +- CometSort
+                                       +- CometSinkPlaceHolder
+                                          +- CometColumnarExchange
+                                             +- SortMergeJoin
+                                                :- CometSort
+                                                :  +- CometSinkPlaceHolder
+                                                :     +- CometExchange
+                                                :        +- CometFilter
+                                                :           +- CometScanWrapper
+                                                +- Project
+                                                   +- Filter
+                                                      +- Window
+                                                         +-  WindowGroupLimit [COMET: WindowGroupLimit is not supported]
+                                                            +- CometSort
+                                                               +- CometHashAggregate
+                                                                  +- CometSinkPlaceHolder
+                                                                     +- CometExchange
+                                                                        +- CometHashAggregate
+                                                                           +- CometProject
+                                                                              +- CometSortMergeJoin
+                                                                                 :- CometSort
+                                                                                 :  +- CometSinkPlaceHolder
+                                                                                 :     +- CometExchange
+                                                                                 :        +- CometProject
+                                                                                 :           +- CometSortMergeJoin
+                                                                                 :              :- CometSort
+                                                                                 :              :  +- CometSinkPlaceHolder
+                                                                                 :              :     +- CometExchange
+                                                                                 :              :        +- CometFilter
+                                                                                 :              :           +- CometScanWrapper
+                                                                                 :              +- CometSort
+                                                                                 :                 +- CometSinkPlaceHolder
+                                                                                 :                    +- CometExchange
+                                                                                 :                       +- CometFilter
+                                                                                 :                          +- CometScanWrapper
+                                                                                 +- CometSort
+                                                                                    +- CometSinkPlaceHolder
+                                                                                       +- CometExchange
+                                                                                          +- CometProject
+                                                                                             +- CometFilter
+                                                                                                +- CometScanWrapper
+
+Comet accelerated 62 out of 70 eligible operators (88%). Final plan contains 0 transitions between Spark and Comet.
+q70        2.181 s                                                              
+q71        1.421 s                                                              
+q72      213.008 s                                                              
+q73        1.929 s                                                              
+q74        2.720 s                                                              
+q75        2.318 s                                                              
+q76        0.639 s
+26/02/28 19:29:25 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+TakeOrderedAndProject
++- HashAggregate
+   +- CometSinkPlaceHolder
+      +- CometColumnarExchange
+         +- HashAggregate
+            +- Expand
+               +- Union
+                  :- CometProject
+                  :  +- CometSortMergeJoin
+                  :     :- CometSort
+                  :     :  +- CometHashAggregate
+                  :     :     +- CometHashAggregate
+                  :     :        +- CometProject
+                  :     :           +- CometSortMergeJoin
+                  :     :              :- CometSort
+                  :     :              :  +- CometSinkPlaceHolder
+                  :     :              :     +- CometExchange
+                  :     :              :        +- CometProject
+                  :     :              :           +- CometSortMergeJoin
+                  :     :              :              :- CometSort
+                  :     :              :              :  +- CometSinkPlaceHolder
+                  :     :              :              :     +- CometExchange
+                  :     :              :              :        +- CometFilter
+                  :     :              :              :           +- CometScanWrapper
+                  :     :              :              +- CometSort
+                  :     :              :                 +- CometSinkPlaceHolder
+                  :     :              :                    +- CometExchange
+                  :     :              :                       +- CometProject
+                  :     :              :                          +- CometFilter
+                  :     :              :                             +- CometScanWrapper
+                  :     :              +- CometSort
+                  :     :                 +- CometSinkPlaceHolder
+                  :     :                    +- CometExchange
+                  :     :                       +- CometFilter
+                  :     :                          +- CometScanWrapper
+                  :     +- CometSort
+                  :        +- CometHashAggregate
+                  :           +- CometHashAggregate
+                  :              +- CometProject
+                  :                 +- CometSortMergeJoin
+                  :                    :- CometSort
+                  :                    :  +- CometSinkPlaceHolder
+                  :                    :     +- CometExchange
+                  :                    :        +- CometProject
+                  :                    :           +- CometSortMergeJoin
+                  :                    :              :- CometSort
+                  :                    :              :  +- CometSinkPlaceHolder
+                  :                    :              :     +- CometExchange
+                  :                    :              :        +- CometFilter
+                  :                    :              :           +- CometScanWrapper
+                  :                    :              +- CometSort
+                  :                    :                 +- CometSinkPlaceHolder
+                  :                    :                    +- CometExchange
+                  :                    :                       +- CometProject
+                  :                    :                          +- CometFilter
+                  :                    :                             +- CometScanWrapper
+                  :                    +- CometSort
+                  :                       +- CometSinkPlaceHolder
+                  :                          +- CometExchange
+                  :                             +- CometFilter
+                  :                                +- CometScanWrapper
+                  :- Project
+                  :  +-  CartesianProduct [COMET: CartesianProduct is not supported]
+                  :     :- CometHashAggregate
+                  :     :  +- CometSinkPlaceHolder
+                  :     :     +- CometExchange
+                  :     :        +- CometHashAggregate
+                  :     :           +- CometProject
+                  :     :              +- CometSortMergeJoin
+                  :     :                 :- CometSort
+                  :     :                 :  +- CometSinkPlaceHolder
+                  :     :                 :     +- CometExchange
+                  :     :                 :        +- CometFilter
+                  :     :                 :           +- CometScanWrapper
+                  :     :                 +- CometSort
+                  :     :                    +- CometSinkPlaceHolder
+                  :     :                       +- CometExchange
+                  :     :                          +- CometProject
+                  :     :                             +- CometFilter
+                  :     :                                +- CometScanWrapper
+                  :     +- CometHashAggregate
+                  :        +- CometSinkPlaceHolder
+                  :           +- CometExchange
+                  :              +- CometHashAggregate
+                  :                 +- CometProject
+                  :                    +- CometSortMergeJoin
+                  :                       :- CometSort
+                  :                       :  +- CometSinkPlaceHolder
+                  :                       :     +- CometExchange
+                  :                       :        +- CometFilter
+                  :                       :           +- CometScanWrapper
+                  :                       +- CometSort
+                  :                          +- CometSinkPlaceHolder
+                  :                             +- CometExchange
+                  :                                +- CometProject
+                  :                                   +- CometFilter
+                  :                                      +- CometScanWrapper
+                  +- CometProject
+                     +- CometSortMergeJoin
+                        :- CometSort
+                        :  +- CometHashAggregate
+                        :     +- CometHashAggregate
+                        :        +- CometProject
+                        :           +- CometSortMergeJoin
+                        :              :- CometSort
+                        :              :  +- CometSinkPlaceHolder
+                        :              :     +- CometExchange
+                        :              :        +- CometProject
+                        :              :           +- CometSortMergeJoin
+                        :              :              :- CometSort
+                        :              :              :  +- CometSinkPlaceHolder
+                        :              :              :     +- CometExchange
+                        :              :              :        +- CometFilter
+                        :              :              :           +- CometScanWrapper
+                        :              :              +- CometSort
+                        :              :                 +- CometSinkPlaceHolder
+                        :              :                    +- CometExchange
+                        :              :                       +- CometProject
+                        :              :                          +- CometFilter
+                        :              :                             +- CometScanWrapper
+                        :              +- CometSort
+                        :                 +- CometSinkPlaceHolder
+                        :                    +- CometExchange
+                        :                       +- CometFilter
+                        :                          +- CometScanWrapper
+                        +- CometSort
+                           +- CometHashAggregate
+                              +- CometHashAggregate
+                                 +- CometProject
+                                    +- CometSortMergeJoin
+                                       :- CometSort
+                                       :  +- CometSinkPlaceHolder
+                                       :     +- CometExchange
+                                       :        +- CometProject
+                                       :           +- CometSortMergeJoin
+                                       :              :- CometSort
+                                       :              :  +- CometSinkPlaceHolder
+                                       :              :     +- CometExchange
+                                       :              :        +- CometFilter
+                                       :              :           +- CometScanWrapper
+                                       :              +- CometSort
+                                       :                 +- CometSinkPlaceHolder
+                                       :                    +- CometExchange
+                                       :                       +- CometProject
+                                       :                          +- CometFilter
+                                       :                             +- CometScanWrapper
+                                       +- CometSort
+                                          +- CometSinkPlaceHolder
+                                             +- CometExchange
+                                                +- CometFilter
+                                                   +- CometScanWrapper
+
+Comet accelerated 144 out of 151 eligible operators (95%). Final plan contains 0 transitions between Spark and Comet.
+q77        2.251 s                                                              
+26/02/28 19:29:28 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+TakeOrderedAndProject
++-  Project [COMET: Comet does not support Spark's BigDecimal rounding]
+   +- CometFilter
+      +- CometSortMergeJoin
+         :- CometProject
+         :  +- CometSortMergeJoin
+         :     :- CometSort
+         :     :  +- CometHashAggregate
+         :     :     +- CometSinkPlaceHolder
+         :     :        +- CometExchange
+         :     :           +- CometHashAggregate
+         :     :              +- CometProject
+         :     :                 +- CometSortMergeJoin
+         :     :                    :- CometSort
+         :     :                    :  +- CometSinkPlaceHolder
+         :     :                    :     +- CometExchange
+         :     :                    :        +- CometProject
+         :     :                    :           +- CometFilter
+         :     :                    :              +- CometSortMergeJoin
+         :     :                    :                 :- CometSort
+         :     :                    :                 :  +- CometSinkPlaceHolder
+         :     :                    :                 :     +- CometExchange
+         :     :                    :                 :        +- CometFilter
+         :     :                    :                 :           +- CometScanWrapper
+         :     :                    :                 +- CometSort
+         :     :                    :                    +- CometSinkPlaceHolder
+         :     :                    :                       +- CometExchange
+         :     :                    :                          +- CometFilter
+         :     :                    :                             +- CometScanWrapper
+         :     :                    +- CometSort
+         :     :                       +- CometSinkPlaceHolder
+         :     :                          +- CometExchange
+         :     :                             +- CometFilter
+         :     :                                +- CometScanWrapper
+         :     +- CometSort
+         :        +- CometHashAggregate
+         :           +- CometSinkPlaceHolder
+         :              +- CometExchange
+         :                 +- CometHashAggregate
+         :                    +- CometProject
+         :                       +- CometSortMergeJoin
+         :                          :- CometSort
+         :                          :  +- CometSinkPlaceHolder
+         :                          :     +- CometExchange
+         :                          :        +- CometProject
+         :                          :           +- CometFilter
+         :                          :              +- CometSortMergeJoin
+         :                          :                 :- CometSort
+         :                          :                 :  +- CometSinkPlaceHolder
+         :                          :                 :     +- CometExchange
+         :                          :                 :        +- CometFilter
+         :                          :                 :           +- CometScanWrapper
+         :                          :                 +- CometSort
+         :                          :                    +- CometSinkPlaceHolder
+         :                          :                       +- CometExchange
+         :                          :                          +- CometFilter
+         :                          :                             +- CometScanWrapper
+         :                          +- CometSort
+         :                             +- CometSinkPlaceHolder
+         :                                +- CometExchange
+         :                                   +- CometFilter
+         :                                      +- CometScanWrapper
+         +- CometSort
+            +- CometHashAggregate
+               +- CometSinkPlaceHolder
+                  +- CometExchange
+                     +- CometHashAggregate
+                        +- CometProject
+                           +- CometSortMergeJoin
+                              :- CometSort
+                              :  +- CometSinkPlaceHolder
+                              :     +- CometExchange
+                              :        +- CometProject
+                              :           +- CometFilter
+                              :              +- CometSortMergeJoin
+                              :                 :- CometSort
+                              :                 :  +- CometSinkPlaceHolder
+                              :                 :     +- CometExchange
+                              :                 :        +- CometFilter
+                              :                 :           +- CometScanWrapper
+                              :                 +- CometSort
+                              :                    +- CometSinkPlaceHolder
+                              :                       +- CometExchange
+                              :                          +- CometFilter
+                              :                             +- CometScanWrapper
+                              +- CometSort
+                                 +- CometSinkPlaceHolder
+                                    +- CometExchange
+                                       +- CometFilter
+                                          +- CometScanWrapper
+
+Comet accelerated 88 out of 90 eligible operators (97%). Final plan contains 0 transitions between Spark and Comet.
+q78        2.791 s                                                              
+q79        1.649 s                                                              
+q8         1.063 s
+q80        3.168 s                                                              
+q81        0.584 s
+q82        1.266 s                                                              
+q83        0.552 s
+q84        0.508 s
+26/02/28 19:29:39 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(wr_refunded_cash#702))#23277 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:39 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(wr_fee#700))#23278 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q85        1.114 s
+26/02/28 19:29:40 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q86        0.418 s
+q87        0.851 s
+26/02/28 19:29:42 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CartesianProduct
+:- CartesianProduct
+:  :- CartesianProduct
+:  :  :- CartesianProduct
+:  :  :  :- CartesianProduct
+:  :  :  :  :- CartesianProduct
+:  :  :  :  :  :-  CartesianProduct [COMET: CartesianProduct is not supported]
+:  :  :  :  :  :  :- CometHashAggregate
+:  :  :  :  :  :  :  +- CometSinkPlaceHolder
+:  :  :  :  :  :  :     +- CometExchange
+:  :  :  :  :  :  :        +- CometHashAggregate
+:  :  :  :  :  :  :           +- CometProject
+:  :  :  :  :  :  :              +- CometSortMergeJoin
+:  :  :  :  :  :  :                 :- CometSort
+:  :  :  :  :  :  :                 :  +- CometSinkPlaceHolder
+:  :  :  :  :  :  :                 :     +- CometExchange
+:  :  :  :  :  :  :                 :        +- CometProject
+:  :  :  :  :  :  :                 :           +- CometSortMergeJoin
+:  :  :  :  :  :  :                 :              :- CometSort
+:  :  :  :  :  :  :                 :              :  +- CometSinkPlaceHolder
+:  :  :  :  :  :  :                 :              :     +- CometExchange
+:  :  :  :  :  :  :                 :              :        +- CometProject
+:  :  :  :  :  :  :                 :              :           +- CometSortMergeJoin
+:  :  :  :  :  :  :                 :              :              :- CometSort
+:  :  :  :  :  :  :                 :              :              :  +- CometSinkPlaceHolder
+:  :  :  :  :  :  :                 :              :              :     +- CometExchange
+:  :  :  :  :  :  :                 :              :              :        +- CometFilter
+:  :  :  :  :  :  :                 :              :              :           +- CometScanWrapper
+:  :  :  :  :  :  :                 :              :              +- CometSort
+:  :  :  :  :  :  :                 :              :                 +- CometSinkPlaceHolder
+:  :  :  :  :  :  :                 :              :                    +- CometExchange
+:  :  :  :  :  :  :                 :              :                       +- CometProject
+:  :  :  :  :  :  :                 :              :                          +- CometFilter
+:  :  :  :  :  :  :                 :              :                             +- CometScanWrapper
+:  :  :  :  :  :  :                 :              +- CometSort
+:  :  :  :  :  :  :                 :                 +- CometSinkPlaceHolder
+:  :  :  :  :  :  :                 :                    +- CometExchange
+:  :  :  :  :  :  :                 :                       +- CometProject
+:  :  :  :  :  :  :                 :                          +- CometFilter
+:  :  :  :  :  :  :                 :                             +- CometScanWrapper
+:  :  :  :  :  :  :                 +- CometSort
+:  :  :  :  :  :  :                    +- CometSinkPlaceHolder
+:  :  :  :  :  :  :                       +- CometExchange
+:  :  :  :  :  :  :                          +- CometProject
+:  :  :  :  :  :  :                             +- CometFilter
+:  :  :  :  :  :  :                                +- CometScanWrapper
+:  :  :  :  :  :  +- CometHashAggregate
+:  :  :  :  :  :     +- CometSinkPlaceHolder
+:  :  :  :  :  :        +- CometExchange
+:  :  :  :  :  :           +- CometHashAggregate
+:  :  :  :  :  :              +- CometProject
+:  :  :  :  :  :                 +- CometSortMergeJoin
+:  :  :  :  :  :                    :- CometSort
+:  :  :  :  :  :                    :  +- CometSinkPlaceHolder
+:  :  :  :  :  :                    :     +- CometExchange
+:  :  :  :  :  :                    :        +- CometProject
+:  :  :  :  :  :                    :           +- CometSortMergeJoin
+:  :  :  :  :  :                    :              :- CometSort
+:  :  :  :  :  :                    :              :  +- CometSinkPlaceHolder
+:  :  :  :  :  :                    :              :     +- CometExchange
+:  :  :  :  :  :                    :              :        +- CometProject
+:  :  :  :  :  :                    :              :           +- CometSortMergeJoin
+:  :  :  :  :  :                    :              :              :- CometSort
+:  :  :  :  :  :                    :              :              :  +- CometSinkPlaceHolder
+:  :  :  :  :  :                    :              :              :     +- CometExchange
+:  :  :  :  :  :                    :              :              :        +- CometFilter
+:  :  :  :  :  :                    :              :              :           +- CometScanWrapper
+:  :  :  :  :  :                    :              :              +- CometSort
+:  :  :  :  :  :                    :              :                 +- CometSinkPlaceHolder
+:  :  :  :  :  :                    :              :                    +- CometExchange
+:  :  :  :  :  :                    :              :                       +- CometProject
+:  :  :  :  :  :                    :              :                          +- CometFilter
+:  :  :  :  :  :                    :              :                             +- CometScanWrapper
+:  :  :  :  :  :                    :              +- CometSort
+:  :  :  :  :  :                    :                 +- CometSinkPlaceHolder
+:  :  :  :  :  :                    :                    +- CometExchange
+:  :  :  :  :  :                    :                       +- CometProject
+:  :  :  :  :  :                    :                          +- CometFilter
+:  :  :  :  :  :                    :                             +- CometScanWrapper
+:  :  :  :  :  :                    +- CometSort
+:  :  :  :  :  :                       +- CometSinkPlaceHolder
+:  :  :  :  :  :                          +- CometExchange
+:  :  :  :  :  :                             +- CometProject
+:  :  :  :  :  :                                +- CometFilter
+:  :  :  :  :  :                                   +- CometScanWrapper
+:  :  :  :  :  +- CometHashAggregate
+:  :  :  :  :     +- CometSinkPlaceHolder
+:  :  :  :  :        +- CometExchange
+:  :  :  :  :           +- CometHashAggregate
+:  :  :  :  :              +- CometProject
+:  :  :  :  :                 +- CometSortMergeJoin
+:  :  :  :  :                    :- CometSort
+:  :  :  :  :                    :  +- CometSinkPlaceHolder
+:  :  :  :  :                    :     +- CometExchange
+:  :  :  :  :                    :        +- CometProject
+:  :  :  :  :                    :           +- CometSortMergeJoin
+:  :  :  :  :                    :              :- CometSort
+:  :  :  :  :                    :              :  +- CometSinkPlaceHolder
+:  :  :  :  :                    :              :     +- CometExchange
+:  :  :  :  :                    :              :        +- CometProject
+:  :  :  :  :                    :              :           +- CometSortMergeJoin
+:  :  :  :  :                    :              :              :- CometSort
+:  :  :  :  :                    :              :              :  +- CometSinkPlaceHolder
+:  :  :  :  :                    :              :              :     +- CometExchange
+:  :  :  :  :                    :              :              :        +- CometFilter
+:  :  :  :  :                    :              :              :           +- CometScanWrapper
+:  :  :  :  :                    :              :              +- CometSort
+:  :  :  :  :                    :              :                 +- CometSinkPlaceHolder
+:  :  :  :  :                    :              :                    +- CometExchange
+:  :  :  :  :                    :              :                       +- CometProject
+:  :  :  :  :                    :              :                          +- CometFilter
+:  :  :  :  :                    :              :                             +- CometScanWrapper
+:  :  :  :  :                    :              +- CometSort
+:  :  :  :  :                    :                 +- CometSinkPlaceHolder
+:  :  :  :  :                    :                    +- CometExchange
+:  :  :  :  :                    :                       +- CometProject
+:  :  :  :  :                    :                          +- CometFilter
+:  :  :  :  :                    :                             +- CometScanWrapper
+:  :  :  :  :                    +- CometSort
+:  :  :  :  :                       +- CometSinkPlaceHolder
+:  :  :  :  :                          +- CometExchange
+:  :  :  :  :                             +- CometProject
+:  :  :  :  :                                +- CometFilter
+:  :  :  :  :                                   +- CometScanWrapper
+:  :  :  :  +- CometHashAggregate
+:  :  :  :     +- CometSinkPlaceHolder
+:  :  :  :        +- CometExchange
+:  :  :  :           +- CometHashAggregate
+:  :  :  :              +- CometProject
+:  :  :  :                 +- CometSortMergeJoin
+:  :  :  :                    :- CometSort
+:  :  :  :                    :  +- CometSinkPlaceHolder
+:  :  :  :                    :     +- CometExchange
+:  :  :  :                    :        +- CometProject
+:  :  :  :                    :           +- CometSortMergeJoin
+:  :  :  :                    :              :- CometSort
+:  :  :  :                    :              :  +- CometSinkPlaceHolder
+:  :  :  :                    :              :     +- CometExchange
+:  :  :  :                    :              :        +- CometProject
+:  :  :  :                    :              :           +- CometSortMergeJoin
+:  :  :  :                    :              :              :- CometSort
+:  :  :  :                    :              :              :  +- CometSinkPlaceHolder
+:  :  :  :                    :              :              :     +- CometExchange
+:  :  :  :                    :              :              :        +- CometFilter
+:  :  :  :                    :              :              :           +- CometScanWrapper
+:  :  :  :                    :              :              +- CometSort
+:  :  :  :                    :              :                 +- CometSinkPlaceHolder
+:  :  :  :                    :              :                    +- CometExchange
+:  :  :  :                    :              :                       +- CometProject
+:  :  :  :                    :              :                          +- CometFilter
+:  :  :  :                    :              :                             +- CometScanWrapper
+:  :  :  :                    :              +- CometSort
+:  :  :  :                    :                 +- CometSinkPlaceHolder
+:  :  :  :                    :                    +- CometExchange
+:  :  :  :                    :                       +- CometProject
+:  :  :  :                    :                          +- CometFilter
+:  :  :  :                    :                             +- CometScanWrapper
+:  :  :  :                    +- CometSort
+:  :  :  :                       +- CometSinkPlaceHolder
+:  :  :  :                          +- CometExchange
+:  :  :  :                             +- CometProject
+:  :  :  :                                +- CometFilter
+:  :  :  :                                   +- CometScanWrapper
+:  :  :  +- CometHashAggregate
+:  :  :     +- CometSinkPlaceHolder
+:  :  :        +- CometExchange
+:  :  :           +- CometHashAggregate
+:  :  :              +- CometProject
+:  :  :                 +- CometSortMergeJoin
+:  :  :                    :- CometSort
+:  :  :                    :  +- CometSinkPlaceHolder
+:  :  :                    :     +- CometExchange
+:  :  :                    :        +- CometProject
+:  :  :                    :           +- CometSortMergeJoin
+:  :  :                    :              :- CometSort
+:  :  :                    :              :  +- CometSinkPlaceHolder
+:  :  :                    :              :     +- CometExchange
+:  :  :                    :              :        +- CometProject
+:  :  :                    :              :           +- CometSortMergeJoin
+:  :  :                    :              :              :- CometSort
+:  :  :                    :              :              :  +- CometSinkPlaceHolder
+:  :  :                    :              :              :     +- CometExchange
+:  :  :                    :              :              :        +- CometFilter
+:  :  :                    :              :              :           +- CometScanWrapper
+:  :  :                    :              :              +- CometSort
+:  :  :                    :              :                 +- CometSinkPlaceHolder
+:  :  :                    :              :                    +- CometExchange
+:  :  :                    :              :                       +- CometProject
+:  :  :                    :              :                          +- CometFilter
+:  :  :                    :              :                             +- CometScanWrapper
+:  :  :                    :              +- CometSort
+:  :  :                    :                 +- CometSinkPlaceHolder
+:  :  :                    :                    +- CometExchange
+:  :  :                    :                       +- CometProject
+:  :  :                    :                          +- CometFilter
+:  :  :                    :                             +- CometScanWrapper
+:  :  :                    +- CometSort
+:  :  :                       +- CometSinkPlaceHolder
+:  :  :                          +- CometExchange
+:  :  :                             +- CometProject
+:  :  :                                +- CometFilter
+:  :  :                                   +- CometScanWrapper
+:  :  +- CometHashAggregate
+:  :     +- CometSinkPlaceHolder
+:  :        +- CometExchange
+:  :           +- CometHashAggregate
+:  :              +- CometProject
+:  :                 +- CometSortMergeJoin
+:  :                    :- CometSort
+:  :                    :  +- CometSinkPlaceHolder
+:  :                    :     +- CometExchange
+:  :                    :        +- CometProject
+:  :                    :           +- CometSortMergeJoin
+:  :                    :              :- CometSort
+:  :                    :              :  +- CometSinkPlaceHolder
+:  :                    :              :     +- CometExchange
+:  :                    :              :        +- CometProject
+:  :                    :              :           +- CometSortMergeJoin
+:  :                    :              :              :- CometSort
+:  :                    :              :              :  +- CometSinkPlaceHolder
+:  :                    :              :              :     +- CometExchange
+:  :                    :              :              :        +- CometFilter
+:  :                    :              :              :           +- CometScanWrapper
+:  :                    :              :              +- CometSort
+:  :                    :              :                 +- CometSinkPlaceHolder
+:  :                    :              :                    +- CometExchange
+:  :                    :              :                       +- CometProject
+:  :                    :              :                          +- CometFilter
+:  :                    :              :                             +- CometScanWrapper
+:  :                    :              +- CometSort
+:  :                    :                 +- CometSinkPlaceHolder
+:  :                    :                    +- CometExchange
+:  :                    :                       +- CometProject
+:  :                    :                          +- CometFilter
+:  :                    :                             +- CometScanWrapper
+:  :                    +- CometSort
+:  :                       +- CometSinkPlaceHolder
+:  :                          +- CometExchange
+:  :                             +- CometProject
+:  :                                +- CometFilter
+:  :                                   +- CometScanWrapper
+:  +- CometHashAggregate
+:     +- CometSinkPlaceHolder
+:        +- CometExchange
+:           +- CometHashAggregate
+:              +- CometProject
+:                 +- CometSortMergeJoin
+:                    :- CometSort
+:                    :  +- CometSinkPlaceHolder
+:                    :     +- CometExchange
+:                    :        +- CometProject
+:                    :           +- CometSortMergeJoin
+:                    :              :- CometSort
+:                    :              :  +- CometSinkPlaceHolder
+:                    :              :     +- CometExchange
+:                    :              :        +- CometProject
+:                    :              :           +- CometSortMergeJoin
+:                    :              :              :- CometSort
+:                    :              :              :  +- CometSinkPlaceHolder
+:                    :              :              :     +- CometExchange
+:                    :              :              :        +- CometFilter
+:                    :              :              :           +- CometScanWrapper
+:                    :              :              +- CometSort
+:                    :              :                 +- CometSinkPlaceHolder
+:                    :              :                    +- CometExchange
+:                    :              :                       +- CometProject
+:                    :              :                          +- CometFilter
+:                    :              :                             +- CometScanWrapper
+:                    :              +- CometSort
+:                    :                 +- CometSinkPlaceHolder
+:                    :                    +- CometExchange
+:                    :                       +- CometProject
+:                    :                          +- CometFilter
+:                    :                             +- CometScanWrapper
+:                    +- CometSort
+:                       +- CometSinkPlaceHolder
+:                          +- CometExchange
+:                             +- CometProject
+:                                +- CometFilter
+:                                   +- CometScanWrapper
++- CometHashAggregate
+   +- CometSinkPlaceHolder
+      +- CometExchange
+         +- CometHashAggregate
+            +- CometProject
+               +- CometSortMergeJoin
+                  :- CometSort
+                  :  +- CometSinkPlaceHolder
+                  :     +- CometExchange
+                  :        +- CometProject
+                  :           +- CometSortMergeJoin
+                  :              :- CometSort
+                  :              :  +- CometSinkPlaceHolder
+                  :              :     +- CometExchange
+                  :              :        +- CometProject
+                  :              :           +- CometSortMergeJoin
+                  :              :              :- CometSort
+                  :              :              :  +- CometSinkPlaceHolder
+                  :              :              :     +- CometExchange
+                  :              :              :        +- CometFilter
+                  :              :              :           +- CometScanWrapper
+                  :              :              +- CometSort
+                  :              :                 +- CometSinkPlaceHolder
+                  :              :                    +- CometExchange
+                  :              :                       +- CometProject
+                  :              :                          +- CometFilter
+                  :              :                             +- CometScanWrapper
+                  :              +- CometSort
+                  :                 +- CometSinkPlaceHolder
+                  :                    +- CometExchange
+                  :                       +- CometProject
+                  :                          +- CometFilter
+                  :                             +- CometScanWrapper
+                  +- CometSort
+                     +- CometSinkPlaceHolder
+                        +- CometExchange
+                           +- CometProject
+                              +- CometFilter
+                                 +- CometScanWrapper
+
+Comet accelerated 312 out of 319 eligible operators (97%). Final plan contains 0 transitions between Spark and Comet.
+q88        1.539 s
+26/02/28 19:29:43 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q89        1.723 s                                                              
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#574))#24029 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#580))#24031 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#574))#24029 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#580))#24031 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#574))#24029 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#580))#24031 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24117))#24035 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24123))#24037 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24117))#24035 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24123))#24037 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24117))#24035 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24123))#24037 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24186))#24041 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24192))#24043 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24186))#24041 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24192))#24043 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24186))#24041 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24192))#24043 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24255))#24047 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24261))#24049 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24255))#24047 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24261))#24049 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24255))#24047 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24261))#24049 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24324))#24053 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24330))#24055 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24324))#24053 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24330))#24055 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_ext_discount_amt#24324))#24053 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+26/02/28 19:29:45 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ss_net_paid#24330))#24055 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q9         1.041 s
+26/02/28 19:29:46 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+Project
++-  CartesianProduct [COMET: CartesianProduct is not supported]
+   :- CometHashAggregate
+   :  +- CometSinkPlaceHolder
+   :     +- CometExchange
+   :        +- CometHashAggregate
+   :           +- CometProject
+   :              +- CometSortMergeJoin
+   :                 :- CometSort
+   :                 :  +- CometSinkPlaceHolder
+   :                 :     +- CometExchange
+   :                 :        +- CometProject
+   :                 :           +- CometSortMergeJoin
+   :                 :              :- CometSort
+   :                 :              :  +- CometSinkPlaceHolder
+   :                 :              :     +- CometExchange
+   :                 :              :        +- CometProject
+   :                 :              :           +- CometSortMergeJoin
+   :                 :              :              :- CometSort
+   :                 :              :              :  +- CometSinkPlaceHolder
+   :                 :              :              :     +- CometExchange
+   :                 :              :              :        +- CometFilter
+   :                 :              :              :           +- CometScanWrapper
+   :                 :              :              +- CometSort
+   :                 :              :                 +- CometSinkPlaceHolder
+   :                 :              :                    +- CometExchange
+   :                 :              :                       +- CometProject
+   :                 :              :                          +- CometFilter
+   :                 :              :                             +- CometScanWrapper
+   :                 :              +- CometSort
+   :                 :                 +- CometSinkPlaceHolder
+   :                 :                    +- CometExchange
+   :                 :                       +- CometProject
+   :                 :                          +- CometFilter
+   :                 :                             +- CometScanWrapper
+   :                 +- CometSort
+   :                    +- CometSinkPlaceHolder
+   :                       +- CometExchange
+   :                          +- CometProject
+   :                             +- CometFilter
+   :                                +- CometScanWrapper
+   +- CometHashAggregate
+      +- CometSinkPlaceHolder
+         +- CometExchange
+            +- CometHashAggregate
+               +- CometProject
+                  +- CometSortMergeJoin
+                     :- CometSort
+                     :  +- CometSinkPlaceHolder
+                     :     +- CometExchange
+                     :        +- CometProject
+                     :           +- CometSortMergeJoin
+                     :              :- CometSort
+                     :              :  +- CometSinkPlaceHolder
+                     :              :     +- CometExchange
+                     :              :        +- CometProject
+                     :              :           +- CometSortMergeJoin
+                     :              :              :- CometSort
+                     :              :              :  +- CometSinkPlaceHolder
+                     :              :              :     +- CometExchange
+                     :              :              :        +- CometFilter
+                     :              :              :           +- CometScanWrapper
+                     :              :              +- CometSort
+                     :              :                 +- CometSinkPlaceHolder
+                     :              :                    +- CometExchange
+                     :              :                       +- CometProject
+                     :              :                          +- CometFilter
+                     :              :                             +- CometScanWrapper
+                     :              +- CometSort
+                     :                 +- CometSinkPlaceHolder
+                     :                    +- CometExchange
+                     :                       +- CometProject
+                     :                          +- CometFilter
+                     :                             +- CometScanWrapper
+                     +- CometSort
+                        +- CometSinkPlaceHolder
+                           +- CometExchange
+                              +- CometProject
+                                 +- CometFilter
+                                    +- CometScanWrapper
+
+Comet accelerated 78 out of 80 eligible operators (97%). Final plan contains 0 transitions between Spark and Comet.
+q90        0.526 s
+q91        0.741 s
+26/02/28 19:29:47 WARN QueryPlanSerde: Comet supports cast((avg(UnscaledValue(ws_ext_discount_amt#24583))#24559 / 100.0) as decimal(11,6)) when spark.comet.expression.Cast.allowIncompatible=true but has notes: There can be rounding differences
+q92        0.621 s
+q93        1.270 s                                                              
+26/02/28 19:29:49 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometHashAggregate
++- CometSinkPlaceHolder
+   +- CometColumnarExchange
+      +- HashAggregate
+         +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+            +- CometSinkPlaceHolder
+               +- CometExchange
+                  +- CometHashAggregate
+                     +- CometProject
+                        +- CometSortMergeJoin
+                           :- CometSort
+                           :  +- CometSinkPlaceHolder
+                           :     +- CometExchange
+                           :        +- CometProject
+                           :           +- CometSortMergeJoin
+                           :              :- CometSort
+                           :              :  +- CometSinkPlaceHolder
+                           :              :     +- CometExchange
+                           :              :        +- CometProject
+                           :              :           +- CometSortMergeJoin
+                           :              :              :- CometSort
+                           :              :              :  +- CometSinkPlaceHolder
+                           :              :              :     +- CometExchange
+                           :              :              :        +- CometSortMergeJoin
+                           :              :              :           :- CometProject
+                           :              :              :           :  +- CometSortMergeJoin
+                           :              :              :           :     :- CometSort
+                           :              :              :           :     :  +- CometSinkPlaceHolder
+                           :              :              :           :     :     +- CometExchange
+                           :              :              :           :     :        +- CometFilter
+                           :              :              :           :     :           +- CometScanWrapper
+                           :              :              :           :     +- CometSort
+                           :              :              :           :        +- CometSinkPlaceHolder
+                           :              :              :           :           +- CometExchange
+                           :              :              :           :              +- CometScanWrapper
+                           :              :              :           +- CometSort
+                           :              :              :              +- CometSinkPlaceHolder
+                           :              :              :                 +- CometExchange
+                           :              :              :                    +- CometScanWrapper
+                           :              :              +- CometSort
+                           :              :                 +- CometSinkPlaceHolder
+                           :              :                    +- CometExchange
+                           :              :                       +- CometProject
+                           :              :                          +- CometFilter
+                           :              :                             +- CometScanWrapper
+                           :              +- CometSort
+                           :                 +- CometSinkPlaceHolder
+                           :                    +- CometExchange
+                           :                       +- CometProject
+                           :                          +- CometFilter
+                           :                             +- CometScanWrapper
+                           +- CometSort
+                              +- CometSinkPlaceHolder
+                                 +- CometExchange
+                                    +- CometProject
+                                       +- CometFilter
+                                          +- CometScanWrapper
+
+Comet accelerated 55 out of 57 eligible operators (96%). Final plan contains 0 transitions between Spark and Comet.
+q94        9.598 s                                                              
+26/02/28 19:29:59 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometHashAggregate
++- CometSinkPlaceHolder
+   +- CometColumnarExchange
+      +- HashAggregate
+         +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+            +- CometSinkPlaceHolder
+               +- CometExchange
+                  +- CometHashAggregate
+                     +- CometProject
+                        +- CometSortMergeJoin
+                           :- CometSort
+                           :  +- CometSinkPlaceHolder
+                           :     +- CometExchange
+                           :        +- CometProject
+                           :           +- CometSortMergeJoin
+                           :              :- CometSort
+                           :              :  +- CometSinkPlaceHolder
+                           :              :     +- CometExchange
+                           :              :        +- CometProject
+                           :              :           +- CometSortMergeJoin
+                           :              :              :- CometSort
+                           :              :              :  +- CometSinkPlaceHolder
+                           :              :              :     +- CometExchange
+                           :              :              :        +- CometSortMergeJoin
+                           :              :              :           :- CometSortMergeJoin
+                           :              :              :           :  :- CometSort
+                           :              :              :           :  :  +- CometSinkPlaceHolder
+                           :              :              :           :  :     +- CometExchange
+                           :              :              :           :  :        +- CometFilter
+                           :              :              :           :  :           +- CometScanWrapper
+                           :              :              :           :  +- CometProject
+                           :              :              :           :     +- CometSortMergeJoin
+                           :              :              :           :        :- CometSort
+                           :              :              :           :        :  +- CometSinkPlaceHolder
+                           :              :              :           :        :     +- CometExchange
+                           :              :              :           :        :        +- CometFilter
+                           :              :              :           :        :           +- CometScanWrapper
+                           :              :              :           :        +- CometSort
+                           :              :              :           :           +- CometSinkPlaceHolder
+                           :              :              :           :              +- CometExchange
+                           :              :              :           :                 +- CometFilter
+                           :              :              :           :                    +- CometScanWrapper
+                           :              :              :           +- CometProject
+                           :              :              :              +- CometSortMergeJoin
+                           :              :              :                 :- CometSort
+                           :              :              :                 :  +- CometSinkPlaceHolder
+                           :              :              :                 :     +- CometExchange
+                           :              :              :                 :        +- CometFilter
+                           :              :              :                 :           +- CometScanWrapper
+                           :              :              :                 +- CometProject
+                           :              :              :                    +- CometSortMergeJoin
+                           :              :              :                       :- CometSort
+                           :              :              :                       :  +- CometSinkPlaceHolder
+                           :              :              :                       :     +- CometExchange
+                           :              :              :                       :        +- CometFilter
+                           :              :              :                       :           +- CometScanWrapper
+                           :              :              :                       +- CometSort
+                           :              :              :                          +- CometSinkPlaceHolder
+                           :              :              :                             +- CometExchange
+                           :              :              :                                +- CometFilter
+                           :              :              :                                   +- CometScanWrapper
+                           :              :              +- CometSort
+                           :              :                 +- CometSinkPlaceHolder
+                           :              :                    +- CometExchange
+                           :              :                       +- CometProject
+                           :              :                          +- CometFilter
+                           :              :                             +- CometScanWrapper
+                           :              +- CometSort
+                           :                 +- CometSinkPlaceHolder
+                           :                    +- CometExchange
+                           :                       +- CometProject
+                           :                          +- CometFilter
+                           :                             +- CometScanWrapper
+                           +- CometSort
+                              +- CometSinkPlaceHolder
+                                 +- CometExchange
+                                    +- CometProject
+                                       +- CometFilter
+                                          +- CometScanWrapper
+
+Comet accelerated 77 out of 79 eligible operators (97%). Final plan contains 0 transitions between Spark and Comet.
+q95        1.291 s
+q96        0.768 s
+q97        0.964 s
+26/02/28 19:30:02 WARN CometExecRule: Comet supports WindowExec when spark.comet.operator.WindowExec.allowIncompatible=true but has notes: Native WindowExec has known correctness issues
+q98        1.421 s                                                              
+q99        1.561 s
+26/02/28 19:30:04 WARN CometExecRule: Comet cannot execute some parts of this plan natively (set spark.comet.explainFallback.enabled=false to disable this logging):
+CometHashAggregate
++- CometSinkPlaceHolder
+   +- CometColumnarExchange
+      +- HashAggregate
+         +-  HashAggregate [COMET: Unsupported aggregation mode PartialMerge]
+            +- CometSinkPlaceHolder
+               +- CometExchange
+                  +- CometHashAggregate
+                     +- CometScanWrapper
+
+Comet accelerated 7 out of 9 eligible operators (77%). Final plan contains 0 transitions between Spark and Comet.
+ss_max     0.673 s
+ss_maxb     0.498 s
