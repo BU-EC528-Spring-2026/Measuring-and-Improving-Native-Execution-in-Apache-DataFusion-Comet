@@ -1,0 +1,288 @@
+// STEP 0
+cd ~/datafusion-comet
+
+export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+
+$SPARK_HOME/bin/spark-shell \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
+  --conf spark.executor.extraClassPath="$COMET_JAR" \
+  --conf spark.plugins=org.apache.spark.CometPlugin \
+  --conf spark.comet.enabled=true \
+  --conf spark.comet.explainFallback.enabled=true \
+  --conf spark.comet.caseConversion.enabled=true \
+  --conf spark.comet.operator.DataWritingCommandExec.allowIncompatible=true \
+  --conf spark.comet.operator.WindowExec.allowIncompatible=true \
+  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
+  --conf spark.memory.offHeap.enabled=true \
+  --conf spark.memory.offHeap.size=16g \
+  --conf spark.comet.parquet.write.enabled=true \
+  --conf spark.comet.exec.localTableScan.enabled=true \
+  --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager
+
+
+// STEP 1: Create Parquet data first (write once)
+spark.sql("""
+  SELECT 
+    id,
+    cast(id as string) as id_str,
+    cast(id % 3 as string) as category,
+    rand() * 100 as value,
+    cast(rand() * 10 as int) as int_val,
+    current_date() as curr_date,
+    current_timestamp() as curr_ts,
+    array(1, 2, 3, 4, 5) as arr,
+    map('key1', 'value1', 'key2', 'value2') as mp,
+    named_struct('field1', 1, 'field2', 'two') as struct_col,
+    cast(null as string) as null_col  -- FIXED: Added type
+  FROM range(1000)
+""").write.mode("overwrite").parquet("/tmp/scalar_test_data")
+
+// STEP 2: Read from Parquet for all tests
+val scalarDF = spark.read.parquet("/tmp/scalar_test_data")
+scalarDF.createOrReplaceTempView("scalar_tbl")
+
+println("=== VERIFY SOURCE ===")
+spark.sql("SELECT * FROM scalar_tbl LIMIT 2").show(false)
+spark.sql("EXPLAIN SELECT * FROM scalar_tbl").show()
+
+// ====================================================
+// STRING FUNCTIONS
+// ====================================================
+println("\n=== STRING FUNCTIONS ===")
+
+// CONCAT
+println("\n--- CONCAT ---")
+spark.sql("SELECT id, CONCAT('user_', id_str) FROM scalar_tbl").explain()
+spark.sql("SELECT id, CONCAT_WS('-', category, id_str) FROM scalar_tbl").explain()
+
+// SUBSTRING
+println("\n--- SUBSTRING ---")
+spark.sql("SELECT id_str, SUBSTRING(id_str, 1, 2) FROM scalar_tbl").explain()
+spark.sql("SELECT id_str, SUBSTR(id_str, 2, 3) FROM scalar_tbl").explain()
+
+// LENGTH
+println("\n--- LENGTH ---")
+spark.sql("SELECT id_str, LENGTH(id_str) FROM scalar_tbl").explain()
+spark.sql("SELECT category, LENGTH(category) FROM scalar_tbl").explain()
+
+// UPPER / LOWER
+println("\n--- UPPER / LOWER ---")
+spark.sql("SELECT id_str, UPPER(id_str), LOWER(id_str) FROM scalar_tbl").explain()
+spark.sql("SELECT category, UPPER(category), LOWER(category) FROM scalar_tbl").explain()
+
+// TRIM
+println("\n--- TRIM ---")
+spark.sql("SELECT id_str, TRIM(id_str) FROM scalar_tbl").explain()
+spark.sql("SELECT id_str, LTRIM(id_str), RTRIM(id_str) FROM scalar_tbl").explain()
+
+// REPLACE
+println("\n--- REPLACE ---")
+spark.sql("SELECT id_str, REPLACE(id_str, '0', 'ZERO') FROM scalar_tbl").explain()
+
+// ====================================================
+// MATH/NUMERIC FUNCTIONS
+// ====================================================
+println("\n=== MATH/NUMERIC FUNCTIONS ===")
+
+// ABS
+println("\n--- ABS ---")
+spark.sql("SELECT value, int_val, ABS(value), ABS(int_val) FROM scalar_tbl").explain()
+
+// CEIL / FLOOR
+println("\n--- CEIL / FLOOR ---")
+spark.sql("SELECT value, CEIL(value), FLOOR(value) FROM scalar_tbl").explain()
+spark.sql("SELECT int_val, CEIL(int_val), FLOOR(int_val) FROM scalar_tbl").explain()
+
+// SQRT / EXP / POWER
+println("\n--- SQRT / EXP / POWER ---")
+spark.sql("SELECT value, SQRT(value), EXP(value), POWER(value, 2) FROM scalar_tbl").explain()
+
+// RAND
+println("\n--- RAND ---")
+spark.sql("SELECT id, RAND(), RAND(42) FROM scalar_tbl").explain()
+
+// ROUND
+println("\n--- ROUND ---")
+spark.sql("SELECT id, value, ROUND(value) FROM scalar_tbl").explain()
+
+// Trigonometric functions
+spark.sql("SELECT id, value, SIN(value), COS(value), TAN(value) FROM scalar_tbl").explain()
+
+// FACTORIAL
+spark.sql("SELECT id, int_val, FACTORIAL(int_val) FROM scalar_tbl").explain()
+
+// ====================================================
+// DATE AND TIME FUNCTIONS
+// ====================================================
+println("\n=== DATE AND TIME FUNCTIONS ===")
+
+// Create date data
+spark.sql("""
+  SELECT 
+    id,
+    date_add(curr_date, cast(id % 10 as int)) as test_date,
+    curr_ts as test_ts
+  FROM scalar_tbl
+""").createOrReplaceTempView("date_tbl")
+
+// CURRENT_DATE / CURRENT_TIMESTAMP
+println("\n--- CURRENT_DATE / CURRENT_TIMESTAMP ---")
+spark.sql("SELECT CURRENT_DATE(), CURRENT_TIMESTAMP() FROM date_tbl LIMIT 1").explain()
+
+// YEAR / MONTH / DAY
+println("\n--- YEAR / MONTH / DAY ---")
+spark.sql("SELECT test_date, YEAR(test_date), MONTH(test_date), DAY(test_date) FROM date_tbl").explain()
+spark.sql("SELECT test_ts, HOUR(test_ts), MINUTE(test_ts), SECOND(test_ts) FROM date_tbl").explain()
+
+// DATE_ADD / DATEDIFF
+println("\n--- DATE_ADD / DATEDIFF ---")
+spark.sql("SELECT test_date, DATE_ADD(test_date, 5), DATEDIFF(test_date, CURRENT_DATE()) FROM date_tbl").explain()
+
+// TO_DATE
+println("\n--- TO_DATE ---")
+spark.sql("SELECT id_str, TO_DATE(id_str) FROM scalar_tbl").explain() // may fail if id_str not valid date
+
+// ====================================================
+// CONVERSION FUNCTIONS
+// ====================================================
+println("\n=== CONVERSION FUNCTIONS ===")
+
+// CAST
+println("\n--- CAST ---")
+spark.sql("SELECT id_str, CAST(id_str AS INT) FROM scalar_tbl WHERE id < 10").explain()
+spark.sql("SELECT value, CAST(value AS INT), CAST(value AS STRING) FROM scalar_tbl").explain()
+
+// COALESCE (null handling)
+println("\n--- COALESCE ---")
+spark.sql("SELECT id, null_col, COALESCE(null_col, 'default') FROM scalar_tbl").explain()
+spark.sql("SELECT category, COALESCE(category, 'unknown') FROM scalar_tbl").explain()
+
+// ====================================================
+// CONDITIONAL/LOGIC FUNCTIONS
+// ====================================================
+println("\n=== CONDITIONAL/LOGIC FUNCTIONS ===")
+
+// IF
+println("\n--- IF ---")
+spark.sql("SELECT id, value, IF(value > 50, 'high', 'low') FROM scalar_tbl").explain()
+
+// CASE WHEN
+println("\n--- CASE WHEN ---")
+spark.sql("""
+  SELECT id, value,
+    CASE 
+      WHEN value < 20 THEN 'low'
+      WHEN value < 60 THEN 'medium'
+      ELSE 'high'
+    END
+  FROM scalar_tbl
+""").explain()
+
+// ISNULL / IS NOT NULL
+println("\n--- ISNULL ---")
+spark.sql("SELECT id, null_col, ISNULL(null_col), ISNOTNULL(id) FROM scalar_tbl").explain()
+
+// GREATEST / LEAST
+println("\n--- GREATEST / LEAST ---")
+spark.sql("SELECT id, value, int_val, GREATEST(value, int_val), LEAST(value, int_val) FROM scalar_tbl").explain()
+
+// ====================================================
+// HASH FUNCTIONS
+// ====================================================
+println("\n=== HASH FUNCTIONS ===")
+
+// MD5 / SHA1 / SHA2 / CRC32
+println("\n--- HASH FUNCTIONS ---")
+spark.sql("SELECT id_str, MD5(id_str), SHA1(id_str), SHA2(id_str, 256), CRC32(id_str) FROM scalar_tbl").explain()
+spark.sql("SELECT value, MD5(CAST(value AS STRING)) FROM scalar_tbl").explain()
+
+// ====================================================
+// COMPLEX TYPE FUNCTIONS
+// ====================================================
+println("\n=== COMPLEX TYPE FUNCTIONS ===")
+
+// ARRAY_CONTAINS / SIZE
+println("\n--- ARRAY FUNCTIONS ---")
+spark.sql("SELECT id, arr, ARRAY_CONTAINS(arr, 3) FROM scalar_tbl").explain()
+spark.sql("SELECT id, arr, SIZE(arr) FROM scalar_tbl").explain()
+
+// MAP FUNCTIONS
+println("\n--- MAP FUNCTIONS ---")
+spark.sql("SELECT id, mp, SIZE(mp) FROM scalar_tbl").explain()
+spark.sql("SELECT id, mp, mp['key1'] FROM scalar_tbl").explain()
+
+// STRUCT
+println("\n--- STRUCT ---")
+spark.sql("SELECT id, struct_col FROM scalar_tbl").explain()
+spark.sql("SELECT id, struct('a', 1, 'b', 2) as new_struct FROM scalar_tbl").explain()
+
+// EXPLODE
+println("\n--- EXPLODE ---")
+spark.sql("SELECT id, EXPLODE(arr) as element FROM scalar_tbl").explain()
+spark.sql("SELECT id, EXPLODE(mp) as (key, value) FROM scalar_tbl").explain()
+
+
+
+// RESULTS
+
+Running Natively in Comet:
+CONCAT()
+CONCAT_WS()
+SUBSTRING() / SUBSTR()
+LENGTH()
+UPPER()
+LOWER()
+TRIM()
+LTRIM()
+RTRIM()
+REPLACE()
+ABS()
+CEIL() (for double and int inputs)
+FLOOR() (for double and int inputs)
+SQRT()
+EXP()
+POWER()
+RAND()
+SIN()
+COS()
+TAN()
+CURRENT_DATE()
+CURRENT_TIMESTAMP()
+YEAR()
+MONTH()
+DAY()
+HOUR()
+MINUTE()
+SECOND()
+DATE_ADD()
+DATEDIFF()
+TO_DATE() (with a warning about year range precision)
+CAST(col AS INT)
+CAST(col AS STRING) (with a warning about precision for doubles)
+COALESCE()
+IF()
+CASE WHEN
+ISNULL()
+ISNOTNULL()
+MD5()
+SHA1()
+SHA2()
+ARRAY_CONTAINS()
+SIZE() (for array inputs)
+Map access mp['key']
+Reading STRUCT columns
+EXPLODE() (for array inputs)
+
+
+Falling Back to Spark JVM:
+ROUND()
+FACTORIAL()
+GREATEST()
+LEAST()
+CRC32()
+SIZE() (for map inputs)
+STRUCT() (when creating a new struct)
+EXPLODE() (for map inputs)

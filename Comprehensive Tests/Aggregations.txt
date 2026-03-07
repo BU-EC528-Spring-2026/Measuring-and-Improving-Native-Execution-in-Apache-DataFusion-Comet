@@ -1,0 +1,95 @@
+// STEP 0
+cd ~/datafusion-comet
+
+export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+
+$SPARK_HOME/bin/spark-shell \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
+  --conf spark.executor.extraClassPath="$COMET_JAR" \
+  --conf spark.plugins=org.apache.spark.CometPlugin \
+  --conf spark.comet.enabled=true \
+  --conf spark.comet.explainFallback.enabled=true \
+  --conf spark.comet.caseConversion.enabled=true \
+  --conf spark.comet.operator.DataWritingCommandExec.allowIncompatible=true \
+  --conf spark.comet.operator.WindowExec.allowIncompatible=true \
+  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
+  --conf spark.memory.offHeap.enabled=true \
+  --conf spark.memory.offHeap.size=16g \
+  --conf spark.comet.parquet.write.enabled=true \
+  --conf spark.comet.exec.localTableScan.enabled=true \
+  --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager
+
+
+// STEP 1: Create Parquet data first (write once)
+spark.sql("""
+  SELECT 
+    id,
+    cast(id % 5 as string) as category,
+    rand() * 100 as value,
+    rand() * 50 as value2,
+    cast(id % 2 as boolean) as flag,
+    cast(id % 10 as int) as int_col,
+    concat('text_', cast(id as string)) as str_col
+  FROM range(1000)
+""").write.mode("overwrite").parquet("/tmp/agg_test_data")
+
+// STEP 2: Read from Parquet for all tests
+val aggDF = spark.read.parquet("/tmp/agg_test_data")
+aggDF.createOrReplaceTempView("test_tbl")
+
+println("=== VERIFY SOURCE ===")
+spark.sql("SELECT * FROM test_tbl LIMIT 5").show()
+spark.sql("EXPLAIN SELECT * FROM test_tbl").show() // Should show CometScan
+
+// STEP 3: Now run all aggregation tests against Parquet
+println("\n--- STATISTICAL ---")
+spark.sql("SELECT variance(value), stddev(value) FROM test_tbl").explain()
+spark.sql("SELECT skewness(value), kurtosis(value) FROM test_tbl").explain()
+spark.sql("SELECT corr(value, value2), covar_samp(value, value2) FROM test_tbl").explain()
+
+println("\n--- ARRAY FUNCTIONS ---")
+spark.sql("SELECT category, collect_list(value), collect_set(value) FROM test_tbl GROUP BY category").explain()
+
+println("\n--- FIRST/LAST ---")
+spark.sql("SELECT category, first(value), last(value) FROM test_tbl GROUP BY category").explain()
+
+println("\n--- PERCENTILE ---")
+spark.sql("SELECT percentile_approx(value, 0.5), percentile(value, 0.5) FROM test_tbl").explain()
+spark.sql("SELECT category, percentile_approx(value, 0.5) FROM test_tbl GROUP BY category").explain()
+
+println("\n--- CONDITIONAL ---")
+spark.sql("SELECT count_if(value > 50) FROM test_tbl").explain()
+spark.sql("SELECT sum(CASE WHEN value > 50 THEN value END) FROM test_tbl").explain()
+
+println("\n--- DISTINCT ---")
+spark.sql("SELECT sum(DISTINCT int_col), avg(DISTINCT int_col) FROM test_tbl").explain()
+
+println("\n--- COUNT VARIANTS ---")
+spark.sql("SELECT approx_count_distinct(value), count(*) FROM test_tbl").explain()
+
+
+// RESULTS
+Running Natively in Comet:-
+corr
+covar_samp
+first
+last
+count_if
+sum(CASE WHEN ...)
+variance
+stddev
+count(*)
+
+Falling Back to Spark JVM:-
+skewness
+kurtosis
+collect_list
+collect_set
+percentile_approx
+percentile
+sum(DISTINCT ...)
+avg(DISTINCT ...)
+approx_count_distinct

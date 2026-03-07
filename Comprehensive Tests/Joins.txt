@@ -1,0 +1,72 @@
+// STEP-0
+cd ~/datafusion-comet
+
+export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+
+$SPARK_HOME/bin/spark-shell \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
+  --conf spark.executor.extraClassPath="$COMET_JAR" \
+  --conf spark.plugins=org.apache.spark.CometPlugin \
+  --conf spark.comet.enabled=true \
+  --conf spark.comet.explainFallback.enabled=true \
+  --conf spark.comet.caseConversion.enabled=true \
+  --conf spark.comet.operator.DataWritingCommandExec.allowIncompatible=true \
+  --conf spark.comet.operator.WindowExec.allowIncompatible=true \
+  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
+  --conf spark.memory.offHeap.enabled=true \
+  --conf spark.memory.offHeap.size=16g \
+  --conf spark.comet.parquet.write.enabled=true \
+  --conf spark.comet.exec.localTableScan.enabled=true \
+  --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager
+
+// STEP-1. FIRST - Create Parquet data (don't use Range directly in joins)
+spark.sql("SELECT id, cast(id % 3 as string) as key FROM range(1000)")
+  .write.mode("overwrite").parquet("/tmp/left_table")
+spark.sql("SELECT id, cast(id % 4 as string) as key FROM range(1000)")
+  .write.mode("overwrite").parquet("/tmp/right_table")
+
+// STEP-2. Read from Parquet
+val left = spark.read.parquet("/tmp/left_table")
+val right = spark.read.parquet("/tmp/right_table")
+left.createOrReplaceTempView("left_tbl")
+right.createOrReplaceTempView("right_tbl")
+
+// STEP-3. Test JOINS (all use Parquet sources)
+
+// INNER JOIN (baseline)
+spark.sql("""
+  SELECT * FROM left_tbl 
+  JOIN right_tbl 
+  ON left_tbl.key = right_tbl.key
+""").explain()
+
+// LEFT JOIN
+spark.sql("""
+  SELECT * FROM left_tbl 
+  LEFT JOIN right_tbl 
+  ON left_tbl.key = right_tbl.key
+""").explain()
+
+// RIGHT JOIN
+spark.sql("""
+  SELECT * FROM left_tbl 
+  RIGHT JOIN right_tbl 
+  ON left_tbl.key = right_tbl.key
+""").explain()
+
+// LEFT ANTI JOIN (FALLING BACK TO JVM)
+spark.sql("""
+  SELECT * FROM left_tbl 
+  LEFT ANTI JOIN right_tbl 
+  ON left_tbl.key = right_tbl.key
+""").explain()
+
+// CROSS JOIN (FALLING BACK TO JVM)
+spark.sql("""
+  SELECT * FROM left_tbl 
+  CROSS JOIN right_tbl 
+  LIMIT 10
+""").explain()
