@@ -1,0 +1,532 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+use crate::parquet::cast_column::CometCastColumnExpr;
+use crate::parquet::parquet_support::{spark_parquet_convert, SparkParquetOptions};
+use arrow::datatypes::{DataType, Field, Schema, SchemaRef};
+use datafusion::common::tree_node::{Transformed, TransformedResult, TreeNode};
+use datafusion::common::Result as DataFusionResult;
+use datafusion::physical_expr::expressions::Column;
+use datafusion::physical_expr::PhysicalExpr;
+use datafusion::physical_plan::ColumnarValue;
+use datafusion::scalar::ScalarValue;
+use datafusion_comet_spark_expr::{Cast, SparkCastOptions};
+use datafusion_physical_expr_adapter::{
+    replace_columns_with_literals, DefaultPhysicalExprAdapterFactory, PhysicalExprAdapter,
+    PhysicalExprAdapterFactory,
+};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Factory for creating Spark-compatible physical expression adapters.
+///
+/// This factory creates adapters that rewrite expressions at planning time
+/// to inject Spark-compatible casts where needed.
+#[derive(Clone, Debug)]
+pub struct SparkPhysicalExprAdapterFactory {
+    /// Spark-specific parquet options for type conversions
+    parquet_options: SparkParquetOptions,
+    /// Default values for columns that may be missing from the physical schema.
+    /// The key is the Column (containing name and index).
+    default_values: Option<HashMap<Column, ScalarValue>>,
+}
+
+impl SparkPhysicalExprAdapterFactory {
+    /// Create a new factory with the given options.
+    pub fn new(
+        parquet_options: SparkParquetOptions,
+        default_values: Option<HashMap<Column, ScalarValue>>,
+    ) -> Self {
+        Self {
+            parquet_options,
+            default_values,
+        }
+    }
+}
+
+/// Remap physical schema field names to match logical schema field names using
+/// case-insensitive matching. This allows the DefaultPhysicalExprAdapter (which
+/// uses exact name matching) to correctly find columns when the parquet file has
+/// different casing than the table schema (e.g., file has "a" but table has "A").
+fn remap_physical_schema_names(
+    logical_schema: &SchemaRef,
+    physical_schema: &SchemaRef,
+) -> SchemaRef {
+    let logical_names: HashMap<String, &str> = logical_schema
+        .fields()
+        .iter()
+        .map(|f| (f.name().to_lowercase(), f.name().as_str()))
+        .collect();
+
+    let remapped_fields: Vec<_> = physical_schema
+        .fields()
+        .iter()
+        .map(|field| {
+            if let Some(logical_name) = logical_names.get(&field.name().to_lowercase()) {
+                if *logical_name != field.name() {
+                    Arc::new(Field::new(
+                        *logical_name,
+                        field.data_type().clone(),
+                        field.is_nullable(),
+                    ))
+                } else {
+                    Arc::clone(field)
+                }
+            } else {
+                Arc::clone(field)
+            }
+        })
+        .collect();
+
+    Arc::new(Schema::new(remapped_fields))
+}
+
+impl PhysicalExprAdapterFactory for SparkPhysicalExprAdapterFactory {
+    fn create(
+        &self,
+        logical_file_schema: SchemaRef,
+        physical_file_schema: SchemaRef,
+    ) -> Arc<dyn PhysicalExprAdapter> {
+        // When case-insensitive, remap physical schema field names to match logical
+        // field names. The DefaultPhysicalExprAdapter uses exact name matching, so
+        // without this remapping, columns like "a" won't match logical "A" and will
+        // be filled with nulls.
+        //
+        // We also build a reverse map (logical name -> physical name) so that after
+        // the default adapter produces expressions, we can remap column names back
+        // to the original physical names. This is necessary because downstream code
+        // (reassign_expr_columns) looks up columns by name in the actual stream
+        // schema, which uses the original physical file column names.
+        let (adapted_physical_schema, logical_to_physical_names) =
+            if !self.parquet_options.case_sensitive {
+                let logical_to_physical: HashMap<String, String> = logical_file_schema
+                    .fields()
+                    .iter()
+                    .filter_map(|logical_field| {
+                        physical_file_schema
+                            .fields()
+                            .iter()
+                            .find(|pf| {
+                                pf.name().to_lowercase() == logical_field.name().to_lowercase()
+                                    && pf.name() != logical_field.name()
+                            })
+                            .map(|pf| (logical_field.name().clone(), pf.name().clone()))
+                    })
+                    .collect();
+                let remapped =
+                    remap_physical_schema_names(&logical_file_schema, &physical_file_schema);
+                (
+                    remapped,
+                    if logical_to_physical.is_empty() {
+                        None
+                    } else {
+                        Some(logical_to_physical)
+                    },
+                )
+            } else {
+                (Arc::clone(&physical_file_schema), None)
+            };
+
+        let default_factory = DefaultPhysicalExprAdapterFactory;
+        let default_adapter = default_factory.create(
+            Arc::clone(&logical_file_schema),
+            Arc::clone(&adapted_physical_schema),
+        );
+
+        Arc::new(SparkPhysicalExprAdapter {
+            logical_file_schema,
+            physical_file_schema: adapted_physical_schema,
+            parquet_options: self.parquet_options.clone(),
+            default_values: self.default_values.clone(),
+            default_adapter,
+            logical_to_physical_names,
+        })
+    }
+}
+
+/// Spark-compatible physical expression adapter.
+///
+/// This adapter rewrites expressions at planning time to:
+/// 1. Replace references to missing columns with default values or nulls
+/// 2. Replace standard DataFusion cast expressions with Spark-compatible casts
+/// 3. Handle case-insensitive column matching
+#[derive(Debug)]
+struct SparkPhysicalExprAdapter {
+    /// The logical schema expected by the query
+    logical_file_schema: SchemaRef,
+    /// The physical schema of the actual file being read
+    physical_file_schema: SchemaRef,
+    /// Spark-specific options for type conversions
+    parquet_options: SparkParquetOptions,
+    /// Default values for missing columns (keyed by Column)
+    default_values: Option<HashMap<Column, ScalarValue>>,
+    /// The default DataFusion adapter to delegate standard handling to
+    default_adapter: Arc<dyn PhysicalExprAdapter>,
+    /// Mapping from logical column names to original physical column names,
+    /// used for case-insensitive mode where names differ in casing.
+    /// After the default adapter rewrites expressions using the remapped
+    /// physical schema (with logical names), we need to restore the original
+    /// physical names so that downstream reassign_expr_columns can find
+    /// columns in the actual stream schema.
+    logical_to_physical_names: Option<HashMap<String, String>>,
+}
+
+impl PhysicalExprAdapter for SparkPhysicalExprAdapter {
+    fn rewrite(&self, expr: Arc<dyn PhysicalExpr>) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
+        // First let the default adapter handle column remapping, missing columns,
+        // and simple scalar type casts. Then replace DataFusion's CastColumnExpr
+        // with Spark-compatible equivalents.
+        //
+        // The default adapter may fail for complex nested type casts (List, Map).
+        // In that case, fall back to wrapping everything ourselves.
+        let expr = self.replace_missing_with_defaults(expr)?;
+        let expr = match self.default_adapter.rewrite(Arc::clone(&expr)) {
+            Ok(rewritten) => {
+                // Replace references to missing columns with default values
+                // Replace DataFusion's CastColumnExpr with either:
+                // - CometCastColumnExpr (for Struct/List/Map, uses spark_parquet_convert)
+                // - Spark Cast (for simple scalar types)
+                rewritten
+                    .transform(|e| self.replace_with_spark_cast(e))
+                    .data()?
+            }
+            Err(e) => {
+                // Default adapter failed (likely complex nested type cast).
+                // Handle all type mismatches ourselves using spark_parquet_convert.
+                log::debug!("Default schema adapter error: {}", e);
+                self.wrap_all_type_mismatches(expr)?
+            }
+        };
+
+        // For case-insensitive mode: remap column names from logical back to
+        // original physical names. The default adapter was given a remapped
+        // physical schema (with logical names) so it could find columns. But
+        // downstream code (reassign_expr_columns) looks up columns by name in
+        // the actual parquet stream schema, which uses the original physical names.
+        let expr = if let Some(name_map) = &self.logical_to_physical_names {
+            expr.transform(|e| {
+                if let Some(col) = e.as_any().downcast_ref::<Column>() {
+                    if let Some(physical_name) = name_map.get(col.name()) {
+                        return Ok(Transformed::yes(Arc::new(Column::new(
+                            physical_name,
+                            col.index(),
+                        ))));
+                    }
+                }
+                Ok(Transformed::no(e))
+            })
+            .data()?
+        } else {
+            expr
+        };
+
+        Ok(expr)
+    }
+}
+
+impl SparkPhysicalExprAdapter {
+    /// Wrap ALL Column expressions that have type mismatches with CometCastColumnExpr.
+    /// This is the fallback path when the default adapter fails (e.g., for complex
+    /// nested type casts like List<Struct> or Map). Uses `spark_parquet_convert`
+    /// under the hood for the actual type conversion.
+    fn wrap_all_type_mismatches(
+        &self,
+        expr: Arc<dyn PhysicalExpr>,
+    ) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
+        expr.transform(|e| {
+            if let Some(column) = e.as_any().downcast_ref::<Column>() {
+                let col_idx = column.index();
+                let col_name = column.name();
+
+                let logical_field = self.logical_file_schema.fields().get(col_idx);
+                // Look up physical field by name instead of index for correctness
+                // when logical and physical schemas have different column orderings
+                let physical_field = if self.parquet_options.case_sensitive {
+                    self.physical_file_schema
+                        .fields()
+                        .iter()
+                        .find(|f| f.name() == col_name)
+                } else {
+                    self.physical_file_schema
+                        .fields()
+                        .iter()
+                        .find(|f| f.name().to_lowercase() == col_name.to_lowercase())
+                };
+
+                if let (Some(logical_field), Some(physical_field)) = (logical_field, physical_field)
+                {
+                    if logical_field.data_type() != physical_field.data_type() {
+                        let cast_expr: Arc<dyn PhysicalExpr> = Arc::new(
+                            CometCastColumnExpr::new(
+                                Arc::clone(&e),
+                                Arc::clone(physical_field),
+                                Arc::clone(logical_field),
+                                None,
+                            )
+                            .with_parquet_options(self.parquet_options.clone()),
+                        );
+                        return Ok(Transformed::yes(cast_expr));
+                    }
+                }
+            }
+            Ok(Transformed::no(e))
+        })
+        .data()
+    }
+
+    /// Replace CastColumnExpr (DataFusion's cast) with Spark's Cast expression.
+    fn replace_with_spark_cast(
+        &self,
+        expr: Arc<dyn PhysicalExpr>,
+    ) -> DataFusionResult<Transformed<Arc<dyn PhysicalExpr>>> {
+        // Check for CastColumnExpr and replace with spark_expr::Cast
+        // CastColumnExpr is in datafusion_physical_expr::expressions
+        if let Some(cast) = expr
+            .as_any()
+            .downcast_ref::<datafusion::physical_expr::expressions::CastColumnExpr>()
+        {
+            let child = Arc::clone(cast.expr());
+            let physical_type = cast.input_field().data_type();
+            let target_type = cast.target_field().data_type();
+
+            // For complex nested types (Struct, List, Map), Timestamp timezone
+            // mismatches, and Timestamp→Int64 (nanosAsLong), use CometCastColumnExpr
+            // with spark_parquet_convert which handles field-name-based selection,
+            // reordering, nested type casting, metadata-only timestamp timezone
+            // relabeling, and raw value reinterpretation correctly.
+            //
+            // Timestamp mismatches (e.g., Timestamp(us, None) -> Timestamp(us, Some("UTC")))
+            // occur when INT96 Parquet timestamps are coerced to Timestamp(us, None) by
+            // DataFusion but the logical schema expects Timestamp(us, Some("UTC")).
+            // Using Spark's Cast here would incorrectly treat the None-timezone values as
+            // local time (TimestampNTZ) and apply a timezone conversion, but the values are
+            // already in UTC. spark_parquet_convert handles this as a metadata-only change.
+            //
+            // Timestamp→Int64 occurs when Spark's `nanosAsLong` config converts
+            // TIMESTAMP(NANOS) to LongType. Spark's Cast would divide by MICROS_PER_SECOND
+            // (assuming microseconds), but the values are nanoseconds. Arrow cast correctly
+            // reinterprets the raw i64 value without conversion.
+            if matches!(
+                (physical_type, target_type),
+                (DataType::Struct(_), DataType::Struct(_))
+                    | (DataType::List(_), DataType::List(_))
+                    | (DataType::Map(_, _), DataType::Map(_, _))
+                    | (DataType::Timestamp(_, _), DataType::Timestamp(_, _))
+                    | (DataType::Timestamp(_, _), DataType::Int64)
+            ) {
+                let comet_cast: Arc<dyn PhysicalExpr> = Arc::new(
+                    CometCastColumnExpr::new(
+                        child,
+                        Arc::clone(cast.input_field()),
+                        Arc::clone(cast.target_field()),
+                        None,
+                    )
+                    .with_parquet_options(self.parquet_options.clone()),
+                );
+                return Ok(Transformed::yes(comet_cast));
+            }
+
+            // For simple scalar type casts, use Spark-compatible Cast expression
+            let mut cast_options = SparkCastOptions::new(
+                self.parquet_options.eval_mode,
+                &self.parquet_options.timezone,
+                self.parquet_options.allow_incompat,
+            );
+            cast_options.allow_cast_unsigned_ints = self.parquet_options.allow_cast_unsigned_ints;
+            cast_options.is_adapting_schema = true;
+
+            let spark_cast = Arc::new(Cast::new(child, target_type.clone(), cast_options));
+
+            return Ok(Transformed::yes(spark_cast as Arc<dyn PhysicalExpr>));
+        }
+
+        Ok(Transformed::no(expr))
+    }
+
+    /// Replace references to missing columns with default values.
+    fn replace_missing_with_defaults(
+        &self,
+        expr: Arc<dyn PhysicalExpr>,
+    ) -> DataFusionResult<Arc<dyn PhysicalExpr>> {
+        let Some(defaults) = &self.default_values else {
+            return Ok(expr);
+        };
+
+        if defaults.is_empty() {
+            return Ok(expr);
+        }
+
+        // Build owned (column_name, default_value) pairs for columns missing from the physical file.
+        // For each default: filter to only columns absent from physical schema, then type-cast
+        // the value to match the logical schema's field type if they differ (using Spark cast semantics).
+        let missing_column_defaults: Vec<(String, ScalarValue)> = defaults
+            .iter()
+            .filter_map(|(col, val)| {
+                let col_name = col.name();
+
+                // Only include defaults for columns missing from the physical file schema
+                let is_missing = if self.parquet_options.case_sensitive {
+                    self.physical_file_schema.field_with_name(col_name).is_err()
+                } else {
+                    !self
+                        .physical_file_schema
+                        .fields()
+                        .iter()
+                        .any(|f| f.name().eq_ignore_ascii_case(col_name))
+                };
+
+                if !is_missing {
+                    return None;
+                }
+
+                // Cast value to logical schema type if needed (only if types differ)
+                let value = self
+                    .logical_file_schema
+                    .field_with_name(col_name)
+                    .ok()
+                    .filter(|field| val.data_type() != *field.data_type())
+                    .and_then(|field| {
+                        spark_parquet_convert(
+                            ColumnarValue::Scalar(val.clone()),
+                            field.data_type(),
+                            &self.parquet_options,
+                        )
+                        .ok()
+                        .and_then(|cv| match cv {
+                            ColumnarValue::Scalar(s) => Some(s),
+                            _ => None,
+                        })
+                    })
+                    .unwrap_or_else(|| val.clone());
+
+                Some((col_name.to_string(), value))
+            })
+            .collect();
+
+        let name_based: HashMap<&str, &ScalarValue> = missing_column_defaults
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect();
+
+        if name_based.is_empty() {
+            return Ok(expr);
+        }
+
+        replace_columns_with_literals(expr, &name_based)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::parquet::parquet_support::SparkParquetOptions;
+    use crate::parquet::schema_adapter::SparkPhysicalExprAdapterFactory;
+    use arrow::array::UInt32Array;
+    use arrow::array::{Int32Array, StringArray};
+    use arrow::datatypes::SchemaRef;
+    use arrow::datatypes::{DataType, Field, Schema};
+    use arrow::record_batch::RecordBatch;
+    use datafusion::common::DataFusionError;
+    use datafusion::datasource::listing::PartitionedFile;
+    use datafusion::datasource::physical_plan::{FileGroup, FileScanConfigBuilder, ParquetSource};
+    use datafusion::datasource::source::DataSourceExec;
+    use datafusion::execution::object_store::ObjectStoreUrl;
+    use datafusion::execution::TaskContext;
+    use datafusion::physical_plan::ExecutionPlan;
+    use datafusion_comet_spark_expr::test_common::file_util::get_temp_filename;
+    use datafusion_comet_spark_expr::EvalMode;
+    use datafusion_physical_expr_adapter::PhysicalExprAdapterFactory;
+    use futures::StreamExt;
+    use parquet::arrow::ArrowWriter;
+    use std::fs::File;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn parquet_roundtrip_int_as_string() -> Result<(), DataFusionError> {
+        let file_schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int32, false),
+            Field::new("name", DataType::Utf8, false),
+        ]));
+
+        let ids = Arc::new(Int32Array::from(vec![1, 2, 3])) as Arc<dyn arrow::array::Array>;
+        let names = Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie"]))
+            as Arc<dyn arrow::array::Array>;
+        let batch = RecordBatch::try_new(Arc::clone(&file_schema), vec![ids, names])?;
+
+        let required_schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Utf8, false),
+            Field::new("name", DataType::Utf8, false),
+        ]));
+
+        let _ = roundtrip(&batch, required_schema).await?;
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn parquet_roundtrip_unsigned_int() -> Result<(), DataFusionError> {
+        let file_schema = Arc::new(Schema::new(vec![Field::new("id", DataType::UInt32, false)]));
+
+        let ids = Arc::new(UInt32Array::from(vec![1, 2, 3])) as Arc<dyn arrow::array::Array>;
+        let batch = RecordBatch::try_new(Arc::clone(&file_schema), vec![ids])?;
+
+        let required_schema = Arc::new(Schema::new(vec![Field::new("id", DataType::Int32, false)]));
+
+        let _ = roundtrip(&batch, required_schema).await?;
+
+        Ok(())
+    }
+
+    /// Create a Parquet file containing a single batch and then read the batch back using
+    /// the specified required_schema. This will cause the PhysicalExprAdapter code to be used.
+    async fn roundtrip(
+        batch: &RecordBatch,
+        required_schema: SchemaRef,
+    ) -> Result<RecordBatch, DataFusionError> {
+        let filename = get_temp_filename();
+        let filename = filename.as_path().as_os_str().to_str().unwrap().to_string();
+        let file = File::create(&filename)?;
+        let mut writer = ArrowWriter::try_new(file, Arc::clone(&batch.schema()), None)?;
+        writer.write(batch)?;
+        writer.close()?;
+
+        let object_store_url = ObjectStoreUrl::local_filesystem();
+
+        let mut spark_parquet_options = SparkParquetOptions::new(EvalMode::Legacy, "UTC", false);
+        spark_parquet_options.allow_cast_unsigned_ints = true;
+
+        // Create expression adapter factory for Spark-compatible schema adaptation
+        let expr_adapter_factory: Arc<dyn PhysicalExprAdapterFactory> = Arc::new(
+            SparkPhysicalExprAdapterFactory::new(spark_parquet_options, None),
+        );
+
+        let parquet_source = ParquetSource::new(required_schema);
+
+        let files = FileGroup::new(vec![PartitionedFile::from_path(filename.to_string())?]);
+        let file_scan_config =
+            FileScanConfigBuilder::new(object_store_url, Arc::new(parquet_source))
+                .with_file_groups(vec![files])
+                .with_expr_adapter(Some(expr_adapter_factory))
+                .build();
+
+        let parquet_exec = DataSourceExec::new(Arc::new(file_scan_config));
+
+        let mut stream = parquet_exec
+            .execute(0, Arc::new(TaskContext::default()))
+            .unwrap();
+        stream.next().await.unwrap()
+    }
+}

@@ -1,0 +1,105 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.comet.shims
+
+import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.types.DataTypes
+
+import org.apache.comet.CometSparkSessionExtensions.withInfo
+import org.apache.comet.expressions.{CometCast, CometEvalMode}
+import org.apache.comet.serde.{CommonStringExprs, Compatible, ExprOuterClass, Incompatible}
+import org.apache.comet.serde.ExprOuterClass.{BinaryOutputStyle, Expr}
+import org.apache.comet.serde.QueryPlanSerde.exprToProtoInternal
+
+/**
+ * `CometExprShim` acts as a shim for parsing expressions from different Spark versions.
+ */
+trait CometExprShim extends CommonStringExprs {
+  protected def evalMode(c: Cast): CometEvalMode.Value =
+    CometEvalModeUtil.fromSparkEvalMode(c.evalMode)
+
+  protected def binaryOutputStyle: BinaryOutputStyle = BinaryOutputStyle.HEX_DISCRETE
+
+  def versionSpecificExprToProtoInternal(
+      expr: Expression,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[Expr] = {
+    expr match {
+      case s: StringDecode =>
+        // Right child is the encoding expression.
+        stringDecode(expr, s.charset, s.bin, inputs, binding)
+
+      case expr @ ToPrettyString(child, timeZoneId) =>
+        val castSupported = CometCast.isSupported(
+          child.dataType,
+          DataTypes.StringType,
+          timeZoneId,
+          CometEvalMode.TRY)
+
+        val isCastSupported = castSupported match {
+          case Compatible(_) => true
+          case Incompatible(_) => true
+          case _ => false
+        }
+
+        if (isCastSupported) {
+          exprToProtoInternal(child, inputs, binding) match {
+            case Some(p) =>
+              val toPrettyString = ExprOuterClass.ToPrettyString
+                .newBuilder()
+                .setChild(p)
+                .setTimezone(timeZoneId.getOrElse("UTC"))
+                .setBinaryOutputStyle(binaryOutputStyle)
+                .build()
+              Some(
+                ExprOuterClass.Expr
+                  .newBuilder()
+                  .setToPrettyString(toPrettyString)
+                  .build())
+            case _ =>
+              withInfo(expr, child)
+              None
+          }
+        } else {
+          None
+        }
+
+      case wb: WidthBucket =>
+        withInfo(
+          wb,
+          "WidthBucket not supported, track https://github.com/apache/datafusion-comet/issues/3561")
+        None
+//        https://github.com/apache/datafusion-comet/issues/3561
+//        val childExprs = wb.children.map(exprToProtoInternal(_, inputs, binding))
+//        val optExpr = scalarFunctionExprToProto("width_bucket", childExprs: _*)
+//        optExprWithInfo(optExpr, wb, wb.children: _*)
+
+      case _ => None
+    }
+  }
+}
+
+object CometEvalModeUtil {
+  def fromSparkEvalMode(evalMode: EvalMode.Value): CometEvalMode.Value = evalMode match {
+    case EvalMode.LEGACY => CometEvalMode.LEGACY
+    case EvalMode.TRY => CometEvalMode.TRY
+    case EvalMode.ANSI => CometEvalMode.ANSI
+  }
+}

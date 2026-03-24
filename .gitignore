@@ -1,0 +1,15 @@
+target/
+native/target/
+spark/target/
+data/
+tpch-parquet/
+tpch-dbgen/
+spark-warehouse/
+metastore_db/
+derby.log
+.DS_Store
+*.bak
+*.log
+.flattened-pom.xml
+dependency-reduced-pom.xml
+native-lib/

@@ -1,0 +1,456 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+
+
+syntax = "proto3";
+
+package spark.spark_expression;
+
+import "literal.proto";
+import "types.proto";
+
+option java_package = "org.apache.comet.serde";
+
+// The basic message representing a Spark expression.
+message Expr {
+  oneof expr_struct {
+    Literal literal = 2;
+    BoundReference bound = 3;
+    MathExpr add = 4;
+    MathExpr subtract = 5;
+    MathExpr multiply = 6;
+    MathExpr divide = 7;
+    Cast cast = 8;
+    BinaryExpr eq = 9;
+    BinaryExpr neq = 10;
+    BinaryExpr gt = 11;
+    BinaryExpr gt_eq = 12;
+    BinaryExpr lt = 13;
+    BinaryExpr lt_eq = 14;
+    UnaryExpr is_null = 15;
+    UnaryExpr is_not_null = 16;
+    BinaryExpr and = 17;
+    BinaryExpr or = 18;
+    SortOrder sort_order = 19;
+    Substring substring = 20;
+    Hour hour = 22;
+    Minute minute = 23;
+    Second second = 24;
+    CheckOverflow check_overflow = 25;
+    BinaryExpr like = 26;
+    BinaryExpr rlike = 30;
+    ScalarFunc scalarFunc = 31;
+    BinaryExpr eqNullSafe = 32;
+    BinaryExpr neqNullSafe = 33;
+    BinaryExpr bitwiseAnd = 34;
+    BinaryExpr bitwiseOr = 35;
+    BinaryExpr bitwiseXor = 36;
+    MathExpr remainder = 37;
+    CaseWhen caseWhen = 38;
+    In in = 39;
+    UnaryExpr not = 40;
+    UnaryMinus unary_minus = 41;
+    BinaryExpr bitwiseShiftRight = 42;
+    BinaryExpr bitwiseShiftLeft = 43;
+    IfExpr if = 44;
+    NormalizeNaNAndZero normalize_nan_and_zero = 45;
+    TruncTimestamp truncTimestamp = 47;
+    Subquery subquery = 50;
+    UnboundReference unbound = 51;
+    BloomFilterMightContain bloom_filter_might_contain = 52;
+    CreateNamedStruct create_named_struct = 53;
+    GetStructField get_struct_field = 54;
+    ToJson to_json = 55;
+    ListExtract list_extract = 56;
+    GetArrayStructFields get_array_struct_fields = 57;
+    ArrayInsert array_insert = 58;
+    MathExpr integral_divide = 59;
+    ToPrettyString to_pretty_string = 60;
+    Rand rand = 61;
+    Rand randn = 62;
+    EmptyExpr spark_partition_id = 63;
+    EmptyExpr monotonically_increasing_id = 64;
+    UnixTimestamp unix_timestamp = 65;
+    FromJson from_json = 66;
+    ToCsv to_csv = 67;
+  }
+}
+
+message AggExpr {
+  oneof expr_struct {
+    Count count = 2;
+    Sum sum = 3;
+    Min min = 4;
+    Max max = 5;
+    Avg avg = 6;
+    First first = 7;
+    Last last = 8;
+    BitAndAgg bitAndAgg = 9;
+    BitOrAgg bitOrAgg = 10;
+    BitXorAgg bitXorAgg = 11;
+    Covariance covariance = 12;
+    Variance variance = 13;
+    Stddev stddev = 14;
+    Correlation correlation = 15;
+    BloomFilterAgg bloomFilterAgg = 16;
+    MaxBy max_by = 17;
+    MinBy min_by = 18;
+  }
+}
+
+enum StatisticsType {
+  SAMPLE = 0;
+  POPULATION = 1;
+}
+
+message Count {
+  repeated Expr children = 1;
+}
+
+message Sum {
+  Expr child = 1;
+  DataType datatype = 2;
+  EvalMode eval_mode = 3;
+}
+
+message Min {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message Max {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message Avg {
+  Expr child = 1;
+  DataType datatype = 2;
+  DataType sum_datatype = 3;
+  EvalMode eval_mode = 4;
+}
+
+message First {
+  Expr child = 1;
+  DataType datatype = 2;
+  bool ignore_nulls = 3;
+}
+
+message Last {
+  Expr child = 1;
+  DataType datatype = 2;
+  bool ignore_nulls = 3;
+}
+
+message BitAndAgg {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message BitOrAgg {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message BitXorAgg {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message Covariance {
+  Expr child1 = 1;
+  Expr child2 = 2;
+  bool null_on_divide_by_zero = 3;
+  DataType datatype = 4;
+  StatisticsType stats_type = 5;
+}
+
+message Variance {
+  Expr child = 1;
+  bool null_on_divide_by_zero = 2;
+  DataType datatype = 3;
+  StatisticsType stats_type = 4;
+}
+
+message Stddev {
+  Expr child = 1;
+  bool null_on_divide_by_zero = 2;
+  DataType datatype = 3;
+  StatisticsType stats_type = 4;
+}
+
+message MaxBy {
+  Expr value = 1;
+  Expr ordering = 2;
+  DataType datatype = 3;
+}
+
+message MinBy {
+  Expr value = 1;
+  Expr ordering = 2;
+  DataType datatype = 3;
+}
+
+message Correlation {
+  Expr child1 = 1;
+  Expr child2 = 2;
+  bool null_on_divide_by_zero = 3;
+  DataType datatype = 4;
+}
+
+message BloomFilterAgg {
+  Expr child = 1;
+  Expr numItems = 2;
+  Expr numBits = 3;
+  DataType datatype = 4;
+}
+
+enum EvalMode {
+  LEGACY = 0;
+  TRY = 1;
+  ANSI = 2;
+}
+
+message MathExpr {
+  Expr left = 1;
+  Expr right = 2;
+  DataType return_type = 4;
+  EvalMode eval_mode = 5;
+}
+
+message Cast {
+  Expr child = 1;
+  DataType datatype = 2;
+  string timezone = 3;
+  EvalMode eval_mode = 4;
+  bool allow_incompat = 5;
+}
+
+message BinaryExpr {
+  Expr left = 1;
+  Expr right = 2;
+}
+
+message UnaryExpr {
+  Expr child = 1;
+}
+
+message EmptyExpr {
+}
+
+// Bound to a particular vector array in input batch.
+message BoundReference {
+  int32 index = 1;
+  DataType datatype = 2;
+}
+
+message UnboundReference {
+  string name = 1;
+  DataType datatype = 2;
+}
+
+message SortOrder {
+  Expr child = 1;
+  SortDirection direction = 2;
+  NullOrdering null_ordering = 3;
+}
+
+message Substring {
+  Expr child = 1;
+  int32 start = 2;
+  int32 len = 3;
+}
+
+message ToJson {
+  Expr child = 1;
+  string timezone = 2;
+  string date_format = 3;
+  string timestamp_format = 4;
+  string timestamp_ntz_format = 5;
+  bool ignore_null_fields = 6;
+}
+
+message FromJson {
+  Expr child = 1;
+  DataType schema = 2;
+  string timezone = 3;
+}
+
+message ToCsv {
+  Expr child = 1;
+  CsvWriteOptions options = 2;
+}
+
+message CsvWriteOptions {
+  string delimiter = 1;
+  string quote = 2;
+  string escape = 3;
+  string null_value = 4;
+  bool quote_all = 5;
+  bool ignore_leading_white_space = 6;
+  bool ignore_trailing_white_space = 7;
+  string timezone = 8;
+}
+
+enum BinaryOutputStyle {
+  UTF8 = 0;
+  BASIC = 1;
+  BASE64 = 2;
+  HEX = 3;
+  HEX_DISCRETE = 4;
+}
+
+message ToPrettyString {
+  Expr child = 1;
+  string timezone = 2;
+  BinaryOutputStyle binaryOutputStyle = 3;
+}
+
+message Hour {
+  Expr child = 1;
+  string timezone = 2;
+}
+
+message Minute {
+  Expr child = 1;
+  string timezone = 2;
+}
+
+message Second {
+  Expr child = 1;
+  string timezone = 2;
+}
+
+message UnixTimestamp {
+  Expr child = 1;
+  string timezone = 2;
+}
+
+message CheckOverflow {
+  Expr child = 1;
+  DataType datatype = 2;
+  bool fail_on_error = 3;
+}
+
+message ScalarFunc {
+  string func = 1;
+  repeated Expr args = 2;
+  DataType return_type = 3;
+  bool fail_on_error = 4;
+}
+
+message CaseWhen {
+  // The expr field is added to be consistent with CaseExpr definition in DataFusion.
+  // This field is not really used. When constructing a CaseExpr, this expr field
+  // is always set to None. The reason that we always set this expr field to None
+  // is because Spark parser converts the expr to a EqualTo conditions. After the
+  // conversion, we don't see this expr any more so it's always None.
+  Expr expr = 1;
+  repeated Expr when = 2;
+  repeated Expr then = 3;
+  Expr else_expr = 4;
+}
+
+message In {
+  Expr in_value = 1;
+  repeated Expr lists = 2;
+  bool negated = 3;
+}
+
+message NormalizeNaNAndZero {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message UnaryMinus {
+  Expr child = 1;
+  bool fail_on_error = 2;
+}
+
+message IfExpr {
+  Expr if_expr = 1;
+  Expr true_expr = 2;
+  Expr false_expr = 3;
+}
+
+message TruncTimestamp {
+  Expr format = 1;
+  Expr child = 2;
+  string timezone = 3;
+}
+
+message Subquery {
+  int64 id = 1;
+  DataType datatype = 2;
+}
+
+message BloomFilterMightContain {
+  Expr bloom_filter = 1;
+  Expr value = 2;
+}
+
+message CreateNamedStruct {
+  repeated Expr values = 1;
+  repeated string names = 2;
+}
+
+message GetStructField {
+  Expr child = 1;
+  int32 ordinal = 2;
+}
+
+message ListExtract {
+  Expr child = 1;
+  Expr ordinal = 2;
+  Expr default_value = 3;
+  bool one_based = 4;
+  bool fail_on_error = 5;
+}
+
+message GetArrayStructFields {
+  Expr child = 1;
+  int32 ordinal = 2;
+}
+
+enum SortDirection {
+  Ascending = 0;
+  Descending = 1;
+}
+
+enum NullOrdering {
+  NullsFirst = 0;
+  NullsLast = 1;
+}
+
+// Array functions
+message ArrayInsert {
+  Expr src_array_expr = 1;
+  Expr pos_expr = 2;
+  Expr item_expr = 3;
+  bool legacy_negative_index = 4;
+}
+
+message ArrayJoin {
+  Expr array_expr = 1;
+  Expr delimiter_expr = 2;
+  Expr null_replacement_expr = 3;
+}
+
+message Rand {
+  int64 seed = 1;
+}

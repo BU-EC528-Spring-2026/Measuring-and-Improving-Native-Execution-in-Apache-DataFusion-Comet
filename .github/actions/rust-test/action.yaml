@@ -1,0 +1,72 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+name: "Rust Test"
+description: "Run Rust tests"
+
+runs:
+  using: "composite"
+  steps:
+    # Note: cargo fmt check is now handled by the lint job that gates this workflow
+
+    - name: Check Cargo clippy
+      shell: bash
+      run: |
+        cd native
+        cargo clippy --color=never --all-targets --workspace -- -D warnings
+
+    - name: Check compilation
+      shell: bash
+      run: |
+        cd native
+        cargo check --benches
+
+    - name: Check unused dependencies
+      shell: bash
+      run: |
+        cd native
+        cargo install cargo-machete --version 0.7.0 && cargo machete
+
+    - name: Cache Maven dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.m2/repository
+          /root/.m2/repository
+        key: ${{ runner.os }}-rust-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-rust-maven-
+
+    - name: Build common module (pre-requisite for Rust tests)
+      shell: bash
+      run: |
+        cd common
+        ../mvnw -B clean compile -DskipTests
+
+    - name: Install nextest
+      shell: bash
+      run: |
+        cargo install cargo-nextest --locked
+
+    - name: Run Cargo test
+      shell: bash
+      run: |
+        cd native
+        # Set LD_LIBRARY_PATH to include JVM library path for tests that use JNI
+        export LD_LIBRARY_PATH=${JAVA_HOME}/lib/server:${LD_LIBRARY_PATH}
+        RUST_BACKTRACE=1 cargo nextest run
+

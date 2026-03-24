@@ -1,0 +1,165 @@
+<!--
+Licensed to the Apache Software Foundation (ASF) under one
+or more contributor license agreements.  See the NOTICE file
+distributed with this work for additional information
+regarding copyright ownership.  The ASF licenses this file
+to you under the Apache License, Version 2.0 (the
+"License"); you may not use this file except in compliance
+with the License.  You may obtain a copy of the License at
+
+  http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing,
+software distributed under the License is distributed on an
+"AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+KIND, either express or implied.  See the License for the
+specific language governing permissions and limitations
+under the License.
+-->
+
+# Comet Benchmarking on macOS
+
+This guide is for setting up TPC-H benchmarks locally on macOS using the 100 GB dataset.
+
+Note that running this benchmark on macOS is not ideal because we cannot force Spark or Comet to use performance
+cores rather than efficiency cores, and background processes are sharing these cores. Also, power and thermal
+management may throttle CPU cores.
+
+## Prerequisites
+
+Java and Rust must be installed locally.
+
+## Data Generation
+
+```shell
+cargo install tpchgen-cli
+mkdir benchmark_data
+cd benchmark_data
+tpchgen-cli -s 100 --format=parquet
+export $BENCH_DATA=`pwd`
+```
+
+Create a temp folder for spark events emitted during benchmarking
+
+```shell
+mkdir /tmp/spark-events
+```
+
+## Clone the DataFusion Benchmarks Repository
+
+```shell
+git clone https://github.com/apache/datafusion-benchmarks.git
+cd
+export DF_BENCH=`pwd`
+```
+
+## Install Spark
+
+Install Apache Spark. This example refers to 3.5.4 version.
+
+```shell
+wget https://archive.apache.org/dist/spark/spark-3.5.4/spark-3.5.4-bin-hadoop3.tgz
+tar xzf spark-3.5.4-bin-hadoop3.tgz
+sudo mv spark-3.5.4-bin-hadoop3 /opt
+export SPARK_HOME=/opt/spark-3.5.4-bin-hadoop3/
+```
+
+Start Spark in standalone mode:
+
+```shell
+$SPARK_HOME/sbin/start-master.sh
+```
+
+Set `SPARK_MASTER` env var (host name will need to be edited):
+
+```shell
+export SPARK_MASTER=spark://Rustys-MacBook-Pro.local:7077
+```
+
+```shell
+$SPARK_HOME/sbin/start-worker.sh $SPARK_MASTER
+```
+
+### Start local Apache Spark cluster using `spark-class`
+
+For Apache Spark distributions installed using `brew` tool, it may happen there is no `$SPARK_HOME/sbin` folder on your machine.
+In order to start local Apache Spark cluster on `localhost:7077` port, run:
+
+```shell
+$SPARK_HOME/bin/spark-class org.apache.spark.deploy.master.Master --host 127.0.0.1 --port 7077 --webui-port 8080
+```
+
+Once master has started, in separate console start the worker referring the spark master uri on `localhost:7077`
+
+```shell
+$SPARK_HOME/bin/spark-class org.apache.spark.deploy.worker.Worker --cores 8 --memory 16G spark://localhost:7077
+```
+
+## Run Spark Benchmarks
+
+Run the following command (the `--data` parameter will need to be updated to point to your TPC-H data):
+
+```shell
+$SPARK_HOME/bin/spark-submit \
+    --master $SPARK_MASTER \
+    --conf spark.driver.memory=8G \
+    --conf spark.executor.instances=1 \
+    --conf spark.executor.cores=8 \
+    --conf spark.cores.max=8 \
+    --conf spark.executor.memory=16g \
+    --conf spark.memory.offHeap.enabled=true \
+    --conf spark.memory.offHeap.size=16g \
+    --conf spark.eventLog.enabled=true \
+    $DF_BENCH/runners/datafusion-comet/tpcbench.py \
+    --benchmark tpch \
+    --data $BENCH_DATA/tpch-data/ \
+    --queries $DF_BENCH/tpch/queries \
+    --output . \
+    --iterations 1
+```
+
+## Run Comet Benchmarks
+
+Build Comet from source, with `mimalloc` enabled.
+
+```shell
+make release COMET_FEATURES=mimalloc
+```
+
+Set `COMET_JAR` to point to the location of the Comet jar file. Example for Comet 0.8
+
+```shell
+export COMET_JAR=`pwd`/spark/target/comet-spark-spark3.5_2.12-0.8.0-SNAPSHOT.jar
+```
+
+Run the following command (the `--data` parameter will need to be updated to point to your S3 bucket):
+
+```shell
+$SPARK_HOME/bin/spark-submit \
+    --master $SPARK_MASTER \
+    --conf spark.driver.memory=8G \
+    --conf spark.executor.instances=1 \
+    --conf spark.executor.cores=8 \
+    --conf spark.cores.max=8 \
+    --conf spark.executor.memory=16g \
+    --conf spark.memory.offHeap.enabled=true \
+    --conf spark.memory.offHeap.size=16g \
+    --conf spark.eventLog.enabled=true \
+    --jars $COMET_JAR \
+    --driver-class-path $COMET_JAR \
+    --conf spark.driver.extraClassPath=$COMET_JAR \
+    --conf spark.executor.extraClassPath=$COMET_JAR \
+    --conf spark.plugins=org.apache.spark.CometPlugin \
+    --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager \
+    --conf spark.comet.enabled=true \
+    --conf spark.comet.exec.shuffle.enableFastEncoding=true \
+    --conf spark.comet.exec.shuffle.fallbackToColumnar=true \
+    --conf spark.comet.exec.replaceSortMergeJoin=true \
+    --conf spark.comet.expression.allowIncompatible=true \
+    $DF_BENCH/runners/datafusion-comet/tpcbench.py \
+    --benchmark tpch \
+    --data $BENCH_DATA/tpch-data/ \
+    --queries $DF_BENCH/tpch/queries \
+    --output . \
+    --iterations 1
+```

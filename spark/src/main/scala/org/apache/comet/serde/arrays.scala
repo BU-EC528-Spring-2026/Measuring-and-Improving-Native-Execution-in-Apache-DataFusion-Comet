@@ -1,0 +1,676 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the License is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ * KIND, either express or implied.  See the License for the
+ * specific language governing permissions and limitations
+ * under the License.
+ */
+
+package org.apache.comet.serde
+
+import scala.annotation.tailrec
+
+import org.apache.spark.sql.catalyst.expressions.{ArrayAppend, ArrayContains, ArrayDistinct, ArrayExcept, ArrayFilter, ArrayInsert, ArrayIntersect, ArrayJoin, ArrayMax, ArrayMin, ArrayRemove, ArrayRepeat, ArraysOverlap, ArrayUnion, Attribute, CreateArray, ElementAt, Expression, Flatten, GetArrayItem, IsNotNull, Literal, Reverse, Size}
+import org.apache.spark.sql.catalyst.util.GenericArrayData
+import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.types._
+
+import org.apache.comet.CometSparkSessionExtensions.withInfo
+import org.apache.comet.serde.QueryPlanSerde._
+import org.apache.comet.shims.CometExprShim
+
+object CometArrayRemove
+    extends CometExpressionSerde[ArrayRemove]
+    with CometExprShim
+    with ArraysBase {
+
+  override def convert(
+      expr: ArrayRemove,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val inputTypes: Set[DataType] = expr.children.map(_.dataType).toSet
+    for (dt <- inputTypes) {
+      if (!isTypeSupported(dt)) {
+        withInfo(expr, s"data type not supported: $dt")
+        return None
+      }
+    }
+    val arrayExprProto = exprToProto(expr.left, inputs, binding)
+    val keyExprProto = exprToProto(expr.right, inputs, binding)
+
+    val arrayRemoveScalarExpr =
+      scalarFunctionExprToProto("array_remove_all", arrayExprProto, keyExprProto)
+
+    val isNotNullExpr = createUnaryExpr(
+      expr,
+      expr.right,
+      inputs,
+      binding,
+      (builder, unaryExpr) => builder.setIsNotNull(unaryExpr))
+
+    val nullLiteralProto = exprToProto(Literal(null, expr.right.dataType), Seq.empty)
+
+    if (arrayRemoveScalarExpr.isDefined && isNotNullExpr.isDefined && nullLiteralProto.isDefined) {
+      val caseWhenExpr = ExprOuterClass.CaseWhen
+        .newBuilder()
+        .addWhen(isNotNullExpr.get)
+        .addThen(arrayRemoveScalarExpr.get)
+        .setElseExpr(nullLiteralProto.get)
+        .build()
+      Some(
+        ExprOuterClass.Expr
+          .newBuilder()
+          .setCaseWhen(caseWhenExpr)
+          .build())
+    } else {
+      withInfo(expr, expr.children: _*)
+      None
+    }
+  }
+}
+
+object CometArrayAppend extends CometExpressionSerde[ArrayAppend] {
+
+  override def getSupportLevel(expr: ArrayAppend): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArrayAppend,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val child = expr.children.head
+    val elementType = child.dataType.asInstanceOf[ArrayType].elementType
+
+    val arrayExprProto = exprToProto(expr.children.head, inputs, binding)
+    val keyExprProto = exprToProto(expr.children(1), inputs, binding)
+
+    val arrayAppendScalarExpr =
+      scalarFunctionExprToProto("array_append", arrayExprProto, keyExprProto)
+
+    val isNotNullExpr = createUnaryExpr(
+      expr,
+      expr.children.head,
+      inputs,
+      binding,
+      (builder, unaryExpr) => builder.setIsNotNull(unaryExpr))
+
+    val nullLiteralProto = exprToProto(Literal(null, elementType), Seq.empty)
+
+    if (arrayAppendScalarExpr.isDefined && isNotNullExpr.isDefined && nullLiteralProto.isDefined) {
+      val caseWhenExpr = ExprOuterClass.CaseWhen
+        .newBuilder()
+        .addWhen(isNotNullExpr.get)
+        .addThen(arrayAppendScalarExpr.get)
+        .setElseExpr(nullLiteralProto.get)
+        .build()
+      Some(
+        ExprOuterClass.Expr
+          .newBuilder()
+          .setCaseWhen(caseWhenExpr)
+          .build())
+    } else {
+      withInfo(expr, expr.children: _*)
+      None
+    }
+  }
+}
+
+object CometArrayContains extends CometExpressionSerde[ArrayContains] {
+  override def convert(
+      expr: ArrayContains,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val arrayExprProto = exprToProto(expr.children.head, inputs, binding)
+    val keyExprProto = exprToProto(expr.children(1), inputs, binding)
+
+    val arrayContainsScalarExpr =
+      scalarFunctionExprToProto("array_has", arrayExprProto, keyExprProto)
+
+    // Handle NULL array input - return NULL if array is NULL (matching Spark's behavior)
+    val isNotNullExpr = createUnaryExpr(
+      expr,
+      expr.children.head,
+      inputs,
+      binding,
+      (builder, unaryExpr) => builder.setIsNotNull(unaryExpr))
+
+    val nullLiteralProto = exprToProto(Literal(null, BooleanType), Seq.empty)
+
+    if (arrayContainsScalarExpr.isDefined && isNotNullExpr.isDefined &&
+      nullLiteralProto.isDefined) {
+      val caseWhenExpr = ExprOuterClass.CaseWhen
+        .newBuilder()
+        .addWhen(isNotNullExpr.get)
+        .addThen(arrayContainsScalarExpr.get)
+        .setElseExpr(nullLiteralProto.get)
+        .build()
+      Some(
+        ExprOuterClass.Expr
+          .newBuilder()
+          .setCaseWhen(caseWhenExpr)
+          .build())
+    } else {
+      withInfo(expr, expr.children: _*)
+      None
+    }
+  }
+}
+
+object CometArrayDistinct extends CometExpressionSerde[ArrayDistinct] {
+
+  override def getSupportLevel(expr: ArrayDistinct): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArrayDistinct,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val arrayExprProto = exprToProto(expr.children.head, inputs, binding)
+
+    val arrayDistinctScalarExpr =
+      scalarFunctionExprToProto("array_distinct", arrayExprProto)
+    optExprWithInfo(arrayDistinctScalarExpr, expr)
+  }
+}
+
+object CometArrayIntersect extends CometExpressionSerde[ArrayIntersect] {
+
+  override def getSupportLevel(expr: ArrayIntersect): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArrayIntersect,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val leftArrayExprProto = exprToProto(expr.children.head, inputs, binding)
+    val rightArrayExprProto = exprToProto(expr.children(1), inputs, binding)
+
+    val arraysIntersectScalarExpr =
+      scalarFunctionExprToProto("array_intersect", leftArrayExprProto, rightArrayExprProto)
+    optExprWithInfo(arraysIntersectScalarExpr, expr, expr.children: _*)
+  }
+}
+
+object CometArrayMax extends CometExpressionSerde[ArrayMax] {
+  override def convert(
+      expr: ArrayMax,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val arrayExprProto = exprToProto(expr.children.head, inputs, binding)
+
+    val arrayMaxScalarExpr =
+      scalarFunctionExprToProto("array_max", arrayExprProto)
+    optExprWithInfo(arrayMaxScalarExpr, expr)
+  }
+}
+
+object CometArrayMin extends CometExpressionSerde[ArrayMin] {
+  override def convert(
+      expr: ArrayMin,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val arrayExprProto = exprToProto(expr.children.head, inputs, binding)
+
+    val arrayMinScalarExpr = scalarFunctionExprToProto("array_min", arrayExprProto)
+    optExprWithInfo(arrayMinScalarExpr, expr)
+  }
+}
+
+object CometArraysOverlap extends CometExpressionSerde[ArraysOverlap] {
+
+  override def getSupportLevel(expr: ArraysOverlap): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArraysOverlap,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val leftArrayExprProto = exprToProto(expr.children.head, inputs, binding)
+    val rightArrayExprProto = exprToProto(expr.children(1), inputs, binding)
+
+    val arraysOverlapScalarExpr = scalarFunctionExprToProtoWithReturnType(
+      "array_has_any",
+      BooleanType,
+      false,
+      leftArrayExprProto,
+      rightArrayExprProto)
+    optExprWithInfo(arraysOverlapScalarExpr, expr, expr.children: _*)
+  }
+}
+
+object CometArrayRepeat extends CometExpressionSerde[ArrayRepeat] {
+
+  override def convert(
+      expr: ArrayRepeat,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val elementProto = exprToProto(expr.left, inputs, binding)
+    val countProto = exprToProto(expr.right, inputs, binding)
+    val returnType = ArrayType(elementType = expr.left.dataType)
+    for {
+      countIsNotNullExpr <- countIsNotNullExpr(expr, inputs, binding)
+      arrayRepeatExprProto <- scalarFunctionExprToProto("array_repeat", elementProto, countProto)
+      nullLiteralExprProto <- exprToProtoInternal(Literal(null, returnType), inputs, binding)
+    } yield {
+      val caseWhenProto = ExprOuterClass.CaseWhen
+        .newBuilder()
+        .addWhen(countIsNotNullExpr)
+        .addThen(arrayRepeatExprProto)
+        .setElseExpr(nullLiteralExprProto)
+        .build()
+      ExprOuterClass.Expr
+        .newBuilder()
+        .setCaseWhen(caseWhenProto)
+        .build()
+    }
+  }
+
+  private def countIsNotNullExpr(
+      expr: ArrayRepeat,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    createUnaryExpr(
+      expr,
+      expr.right,
+      inputs,
+      binding,
+      (builder, countExpr) => builder.setIsNotNull(countExpr))
+  }
+}
+
+object CometArrayCompact extends CometExpressionSerde[Expression] {
+
+  override def getSupportLevel(expr: Expression): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: Expression,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val child = expr.children.head
+    val elementType = child.dataType.asInstanceOf[ArrayType].elementType
+
+    val arrayExprProto = exprToProto(child, inputs, binding)
+    val nullLiteralProto = exprToProto(Literal(null, elementType), Seq.empty)
+
+    val arrayCompactScalarExpr = scalarFunctionExprToProtoWithReturnType(
+      "array_remove_all",
+      ArrayType(elementType = elementType),
+      false,
+      arrayExprProto,
+      nullLiteralProto)
+    optExprWithInfo(arrayCompactScalarExpr, expr, expr.children: _*)
+  }
+}
+
+object CometArrayExcept extends CometExpressionSerde[ArrayExcept] with CometExprShim {
+
+  override def getSupportLevel(expr: ArrayExcept): SupportLevel = Incompatible(None)
+
+  @tailrec
+  def isTypeSupported(dt: DataType): Boolean = {
+    import DataTypes._
+    dt match {
+      case BooleanType | ByteType | ShortType | IntegerType | LongType | FloatType | DoubleType |
+          _: DecimalType | DateType | TimestampType | TimestampNTZType | StringType =>
+        true
+      case BinaryType => false
+      case ArrayType(elementType, _) => isTypeSupported(elementType)
+      case _: StructType =>
+        false
+      case _ => false
+    }
+  }
+
+  override def convert(
+      expr: ArrayExcept,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val inputTypes = expr.children.map(_.dataType).toSet
+    for (dt <- inputTypes) {
+      if (!isTypeSupported(dt)) {
+        withInfo(expr, s"data type not supported: $dt")
+        return None
+      }
+    }
+    val leftArrayExprProto = exprToProto(expr.left, inputs, binding)
+    val rightArrayExprProto = exprToProto(expr.right, inputs, binding)
+
+    val arrayExceptScalarExpr =
+      scalarFunctionExprToProto("array_except", leftArrayExprProto, rightArrayExprProto)
+    optExprWithInfo(arrayExceptScalarExpr, expr, expr.children: _*)
+  }
+}
+
+object CometArrayJoin extends CometExpressionSerde[ArrayJoin] {
+
+  override def getSupportLevel(expr: ArrayJoin): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArrayJoin,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val arrayExpr = expr.asInstanceOf[ArrayJoin]
+    val arrayExprProto = exprToProto(arrayExpr.array, inputs, binding)
+    val delimiterExprProto = exprToProto(arrayExpr.delimiter, inputs, binding)
+
+    arrayExpr.nullReplacement match {
+      case Some(nullReplacementExpr) =>
+        val nullReplacementExprProto = exprToProto(nullReplacementExpr, inputs, binding)
+
+        val arrayJoinScalarExpr = scalarFunctionExprToProto(
+          "array_to_string",
+          arrayExprProto,
+          delimiterExprProto,
+          nullReplacementExprProto)
+
+        optExprWithInfo(
+          arrayJoinScalarExpr,
+          expr,
+          arrayExpr,
+          arrayExpr.delimiter,
+          nullReplacementExpr)
+      case None =>
+        val arrayJoinScalarExpr =
+          scalarFunctionExprToProto("array_to_string", arrayExprProto, delimiterExprProto)
+
+        optExprWithInfo(arrayJoinScalarExpr, expr, arrayExpr, arrayExpr.delimiter)
+    }
+  }
+}
+
+object CometArrayInsert extends CometExpressionSerde[ArrayInsert] {
+
+  override def getSupportLevel(expr: ArrayInsert): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArrayInsert,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val srcExprProto = exprToProtoInternal(expr.children.head, inputs, binding)
+    val posExprProto = exprToProtoInternal(expr.children(1), inputs, binding)
+    val itemExprProto = exprToProtoInternal(expr.children(2), inputs, binding)
+    val legacyNegativeIndex =
+      SQLConf.get.getConfString("spark.sql.legacy.negativeIndexInArrayInsert").toBoolean
+    if (srcExprProto.isDefined && posExprProto.isDefined && itemExprProto.isDefined) {
+      val arrayInsertBuilder = ExprOuterClass.ArrayInsert
+        .newBuilder()
+        .setSrcArrayExpr(srcExprProto.get)
+        .setPosExpr(posExprProto.get)
+        .setItemExpr(itemExprProto.get)
+        .setLegacyNegativeIndex(legacyNegativeIndex)
+
+      Some(
+        ExprOuterClass.Expr
+          .newBuilder()
+          .setArrayInsert(arrayInsertBuilder)
+          .build())
+    } else {
+      withInfo(
+        expr,
+        "unsupported arguments for ArrayInsert",
+        expr.children.head,
+        expr.children(1),
+        expr.children(2))
+      None
+    }
+  }
+}
+
+object CometArrayUnion extends CometExpressionSerde[ArrayUnion] {
+
+  override def getSupportLevel(expr: ArrayUnion): SupportLevel = Incompatible(None)
+
+  override def convert(
+      expr: ArrayUnion,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val leftArrayExprProto = exprToProto(expr.children.head, inputs, binding)
+    val rightArrayExprProto = exprToProto(expr.children(1), inputs, binding)
+
+    val arraysUnionScalarExpr =
+      scalarFunctionExprToProto("array_union", leftArrayExprProto, rightArrayExprProto)
+    optExprWithInfo(arraysUnionScalarExpr, expr, expr.children: _*)
+  }
+}
+
+object CometCreateArray extends CometExpressionSerde[CreateArray] {
+  override def convert(
+      expr: CreateArray,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val children = expr.children
+
+    // Handle empty array: return literal directly to avoid DataFusion coerce_types bug
+    // when make_array is called with 0 arguments (issue #3338)
+    if (children.isEmpty) {
+      val emptyArrayLiteral =
+        Literal.create(new GenericArrayData(Array.empty[Any]), expr.dataType)
+      return exprToProtoInternal(emptyArrayLiteral, inputs, binding)
+    }
+
+    val childExprs = children.map(exprToProtoInternal(_, inputs, binding))
+
+    if (childExprs.forall(_.isDefined)) {
+      scalarFunctionExprToProto("make_array", childExprs: _*)
+    } else {
+      withInfo(expr, "unsupported arguments for CreateArray", children: _*)
+      None
+    }
+  }
+}
+
+object CometGetArrayItem extends CometExpressionSerde[GetArrayItem] {
+  override def convert(
+      expr: GetArrayItem,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val childExpr = exprToProtoInternal(expr.child, inputs, binding)
+    val ordinalExpr = exprToProtoInternal(expr.ordinal, inputs, binding)
+
+    if (childExpr.isDefined && ordinalExpr.isDefined) {
+      val listExtractBuilder = ExprOuterClass.ListExtract
+        .newBuilder()
+        .setChild(childExpr.get)
+        .setOrdinal(ordinalExpr.get)
+        .setOneBased(false)
+        .setFailOnError(expr.failOnError)
+
+      Some(
+        ExprOuterClass.Expr
+          .newBuilder()
+          .setListExtract(listExtractBuilder)
+          .build())
+    } else {
+      withInfo(expr, "unsupported arguments for GetArrayItem", expr.child, expr.ordinal)
+      None
+    }
+  }
+}
+
+object CometArrayReverse extends CometExpressionSerde[Reverse] with ArraysBase {
+  val unsupportedReason = "reverse on array containing binary is not supported"
+
+  @tailrec
+  private def containsBinary(dt: DataType): Boolean = {
+    dt match {
+      case BinaryType => true
+      case ArrayType(elementType, _) => containsBinary(elementType)
+      case _ => false
+    }
+  }
+
+  override def getSupportLevel(expr: Reverse): SupportLevel = {
+    if (containsBinary(expr.child.dataType)) {
+      Incompatible(Some(unsupportedReason))
+    } else {
+      Compatible(None)
+    }
+  }
+
+  override def convert(
+      expr: Reverse,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    if (!isTypeSupported(expr.child.dataType)) {
+      withInfo(expr, s"child data type not supported: ${expr.child.dataType}")
+      return None
+    }
+    val reverseExprProto = exprToProto(expr.child, inputs, binding)
+    val reverseScalarExpr = scalarFunctionExprToProto("array_reverse", reverseExprProto)
+    optExprWithInfo(reverseScalarExpr, expr, expr.children: _*)
+  }
+
+}
+
+object CometElementAt extends CometExpressionSerde[ElementAt] {
+
+  override def convert(
+      expr: ElementAt,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val childExpr = exprToProtoInternal(expr.left, inputs, binding)
+    val ordinalExpr = exprToProtoInternal(expr.right, inputs, binding)
+    val defaultExpr = expr.defaultValueOutOfBound.flatMap(exprToProtoInternal(_, inputs, binding))
+
+    if (!expr.left.dataType.isInstanceOf[ArrayType]) {
+      withInfo(expr, "Input is not an array")
+      return None
+    }
+
+    if (childExpr.isDefined && ordinalExpr.isDefined &&
+      defaultExpr.isDefined == expr.defaultValueOutOfBound.isDefined) {
+      val arrayExtractBuilder = ExprOuterClass.ListExtract
+        .newBuilder()
+        .setChild(childExpr.get)
+        .setOrdinal(ordinalExpr.get)
+        .setOneBased(true)
+        .setFailOnError(expr.failOnError)
+
+      defaultExpr.foreach(arrayExtractBuilder.setDefaultValue)
+
+      Some(
+        ExprOuterClass.Expr
+          .newBuilder()
+          .setListExtract(arrayExtractBuilder)
+          .build())
+    } else {
+      withInfo(expr, "unsupported arguments for ElementAt", expr.left, expr.right)
+      None
+    }
+  }
+}
+
+object CometFlatten extends CometExpressionSerde[Flatten] with ArraysBase {
+
+  override def convert(
+      expr: Flatten,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val inputTypes = expr.children.map(_.dataType).toSet
+    for (dt <- inputTypes) {
+      if (!isTypeSupported(dt)) {
+        withInfo(expr, s"data type not supported: $dt")
+        return None
+      }
+    }
+    val flattenExprProto = exprToProto(expr.child, inputs, binding)
+    val flattenScalarExpr = scalarFunctionExprToProto("flatten", flattenExprProto)
+    optExprWithInfo(flattenScalarExpr, expr, expr.children: _*)
+  }
+}
+
+object CometArrayFilter extends CometExpressionSerde[ArrayFilter] {
+
+  override def getSupportLevel(expr: ArrayFilter): SupportLevel = {
+    expr.function.children.headOption match {
+      case Some(_: IsNotNull) => Compatible()
+      case _ => Unsupported()
+    }
+  }
+
+  override def convert(
+      expr: ArrayFilter,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    CometArrayCompact.convert(expr, inputs, binding)
+  }
+}
+
+object CometSize extends CometExpressionSerde[Size] {
+
+  override def getSupportLevel(expr: Size): SupportLevel = {
+    expr.child.dataType match {
+      case _: ArrayType => Compatible()
+      case _: MapType => Unsupported(Some("size does not support map inputs"))
+      case other =>
+        // this should be unreachable because Spark only supports map and array inputs
+        Unsupported(Some(s"Unsupported child data type: $other"))
+    }
+  }
+
+  override def convert(
+      expr: Size,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    val arrayExprProto = exprToProto(expr.child, inputs, binding)
+    for {
+      isNotNullExprProto <- createIsNotNullExprProto(expr, inputs, binding)
+      sizeScalarExprProto <- scalarFunctionExprToProto("size", arrayExprProto)
+      emptyLiteralExprProto <- createLiteralExprProto(SQLConf.get.legacySizeOfNull)
+    } yield {
+      val caseWhenExpr = ExprOuterClass.CaseWhen
+        .newBuilder()
+        .addWhen(isNotNullExprProto)
+        .addThen(sizeScalarExprProto)
+        .setElseExpr(emptyLiteralExprProto)
+        .build()
+      ExprOuterClass.Expr
+        .newBuilder()
+        .setCaseWhen(caseWhenExpr)
+        .build()
+    }
+  }
+
+  private def createIsNotNullExprProto(
+      expr: Size,
+      inputs: Seq[Attribute],
+      binding: Boolean): Option[ExprOuterClass.Expr] = {
+    createUnaryExpr(
+      expr,
+      expr.child,
+      inputs,
+      binding,
+      (builder, unaryExpr) => builder.setIsNotNull(unaryExpr))
+  }
+
+  private def createLiteralExprProto(legacySizeOfNull: Boolean): Option[ExprOuterClass.Expr] = {
+    val value = if (legacySizeOfNull) -1 else null
+    exprToProto(Literal(value, IntegerType), Seq.empty)
+  }
+
+}
+
+trait ArraysBase {
+
+  def isTypeSupported(dt: DataType): Boolean = {
+    import DataTypes._
+    dt match {
+      case BooleanType | ByteType | ShortType | IntegerType | LongType | FloatType | DoubleType |
+          _: DecimalType | DateType | TimestampType | TimestampNTZType | StringType =>
+        true
+      case BinaryType => false
+      case ArrayType(elementType, _) => isTypeSupported(elementType)
+      case _: StructType =>
+        // https://github.com/apache/datafusion-comet/issues/1307
+        false
+      case _ => false
+    }
+  }
+}
