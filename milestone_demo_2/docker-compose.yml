@@ -1,0 +1,12 @@
+services:
+  comet-demo:
+    build: .
+    container_name: comet-demo
+    ports:
+      - "4040:4040"
+    stdin_open: true
+    tty: true
+    deploy:
+      resources:
+        limits:
+          memory: 12G
