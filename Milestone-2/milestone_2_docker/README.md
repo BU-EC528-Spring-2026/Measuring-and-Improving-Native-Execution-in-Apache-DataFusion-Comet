@@ -5,6 +5,7 @@
 - Docker Desktop (Mac/Windows) or Docker Engine (Linux)
 - At 10 GB disk space recommended
 - Prebuilt 0.14.0 Comet Spark + Common Jars in working directory
+- Shell scripts in /scripts within working directory
 
 ## Quick start
 
