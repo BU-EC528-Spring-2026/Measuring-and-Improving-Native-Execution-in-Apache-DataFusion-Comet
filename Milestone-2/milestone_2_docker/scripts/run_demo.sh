@@ -102,11 +102,11 @@ val legacyTimes = tpch.map { case (n, q) =>
   (n, secs)
 }.toMap
 
-println("\n=== Run 2: Pranav Join Filter ===")
+println("\n=== Run 2: Custom Join Filter ===")
 spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "false")
 spark.conf.set("Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "true")
-showQ21PlanSummary("pranav")
-val pranavTimes = tpch.map { case (n, q) =>
+showQ21PlanSummary("custom")
+val customTimes = tpch.map { case (n, q) =>
   val df = spark.sql(q)
   val t0 = System.nanoTime
   df.collect()
@@ -115,21 +115,21 @@ val pranavTimes = tpch.map { case (n, q) =>
   (n, secs)
 }.toMap
 
-println("\n=== Comparison (Legacy vs Pranav) ===")
-println("%-4s  %12s  %12s  %9s".format("Q", "Legacy(s)", "Pranav(s)", "L/P"))
+println("\n=== Comparison (Legacy vs Custom) ===")
+println("%-4s  %12s  %12s  %9s".format("Q", "Legacy(s)", "Custom(s)", "L/P"))
 tpch.foreach { case (n, _) =>
   val l = legacyTimes.getOrElse(n, 0.0)
-  val p = pranavTimes.getOrElse(n, 0.0)
-  val ratio = if (p > 0) l / p else 0.0
-  println(f"$n%-4s  $l%12.3f  $p%12.3f  $ratio%8.2fx")
+  val c = customTimes.getOrElse(n, 0.0)
+  val ratio = if (c > 0) l / c else 0.0
+  println(f"$n%-4s  $l%12.3f  $c%12.3f  $ratio%8.2fx")
 }
 
 val q21Legacy = legacyTimes.getOrElse("Q21", 0.0)
-val q21Pranav = pranavTimes.getOrElse("Q21", 0.0)
-val q21Ratio = if (q21Pranav > 0) q21Legacy / q21Pranav else 0.0
+val q21Custom= customTimes.getOrElse("Q21", 0.0)
+val q21Ratio = if (q21Custom > 0) q21Legacy / q21Custom else 0.0
 println("--------------------------------------")
 println(f"Q21 legacy:   $q21Legacy%.3f s")
-println(f"Q21 pranav:   $q21Pranav%.3f s")
+println(f"Q21 custom:   $q21Custom%.3f s")
 println(f"Q21 L/P:      $q21Ratio%.2fx")
 
 println("\nDone: two TPCH timing passes completed.")

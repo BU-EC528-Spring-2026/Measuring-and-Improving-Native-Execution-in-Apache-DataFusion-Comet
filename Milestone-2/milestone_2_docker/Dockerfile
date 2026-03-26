@@ -94,7 +94,8 @@ RUN git clone https://github.com/electrum/tpch-dbgen.git /opt/tpch-dbgen \
 
 # ── Scripts ───────────────────────────────────────────────────────────────────
 COPY scripts/ /opt/scripts/
-RUN chmod +x /opt/scripts/*.sh
+RUN sed -i 's/\r$//' /opt/scripts/*.sh \
+    && chmod +x /opt/scripts/*.sh
 
 # Convert .tbl → Parquet at build time so the container starts ready to query
 RUN /opt/scripts/convert_tbl_to_parquet.sh

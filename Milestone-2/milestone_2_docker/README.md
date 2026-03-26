@@ -12,7 +12,7 @@
 # Step 1: build the image (may take 30+ min)
 docker compose build
 
-# Step 2: run the benchmark
+# Step 2: run the benchmarks
 docker compose run comet-demo bash /opt/scripts/run_demo.sh
 ```
 
@@ -26,3 +26,7 @@ Open **http://localhost:4040** while queries are running to see the Spark UI.
 5. Converts `.tbl` files to Parquet
 
 All subsequent `docker compose run` calls start instantly from the cached image.
+
+## Current Issues
+As of 3/25, the custom SMJ flag does not appear to be contributing to a speed up in regards to Q21. Due to the complexity of the build for this project, its difficult to pinpoint/debug what the exact issue is, especially with the current given timeframe. So currently, the demo script runs the TPC-H benchmarks twice, once with the traditional/legacy SMJ flag enabled and once with the custom SMJ flag enabled, but there likely won't be significant improvement with the custom SMJ run until this issue is fixed.
+
