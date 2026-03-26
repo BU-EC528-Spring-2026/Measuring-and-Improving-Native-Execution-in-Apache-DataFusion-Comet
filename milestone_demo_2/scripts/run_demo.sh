@@ -3,33 +3,33 @@
 # Usage: bash /opt/scripts/run_demo.sh
 
 SPARK_HOME=/opt/spark
-COMET_JAR=/opt/comet-spark.jar
+COMET_SPARK_JAR=/opt/comet-spark.jar
+COMET_COMMON_JAR=/opt/comet-common.jar
+ALL_COMET_JARS="$COMET_SPARK_JAR,$COMET_COMMON_JAR"
+ALL_COMET_CP="$COMET_SPARK_JAR:$COMET_COMMON_JAR"
 
 echo "========================================================"
 echo "  DataFusion Comet — TPC-H Benchmark"
-echo "  Spark 3.5.8 + Comet 0.14.0-SNAPSHOT"
+echo "  Spark 3.5.8 + Comet 0.14.0"
 echo "  Spark UI -> http://localhost:4040"
 echo "========================================================"
 
 $SPARK_HOME/bin/spark-shell \
-  --driver-memory 8g \
-  --jars "$COMET_JAR" \
-  --conf spark.driver.extraClassPath="$COMET_JAR" \
-  --conf spark.executor.extraClassPath="$COMET_JAR" \
+  --jars "$ALL_COMET_JARS" \
+  --conf spark.driver.extraClassPath="$ALL_COMET_CP" \
+  --conf spark.executor.extraClassPath="$ALL_COMET_CP" \
   --conf spark.plugins=org.apache.spark.CometPlugin \
   --conf spark.comet.enabled=true \
   --conf spark.comet.explainFallback.enabled=true \
   --conf spark.comet.caseConversion.enabled=true \
   --conf spark.comet.operator.DataWritingCommandExec.allowIncompatible=true \
   --conf spark.comet.operator.WindowExec.allowIncompatible=true \
-  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
   --conf spark.memory.offHeap.enabled=true \
-  --conf spark.memory.offHeap.size=8g \
+  --conf spark.memory.offHeap.size=16g \
   --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager \
   --conf spark.comet.exec.localTableScan.enabled=true \
-  --conf spark.sql.adaptive.enabled=false \
-  --conf spark.sql.shuffle.partitions=8 \
-  --conf spark.sql.autoBroadcastJoinThreshold=-1 \
+  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
+  --conf Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=false \
   << 'SCALA'
 
 val parquetDir = "/opt/tpch-dbgen/data/sf1_parquet"
@@ -41,6 +41,7 @@ Seq("customer","lineitem","orders","part","partsupp","supplier","nation","region
 println("OK: tables loaded")
 
 // revenue0 view needed for Q15
+spark.sql("drop view if exists revenue0")
 spark.sql("""create or replace temp view revenue0 (supplier_no, total_revenue) as
   select l_suppkey, sum(l_extendedprice * (1 - l_discount))
   from lineitem
@@ -48,7 +49,11 @@ spark.sql("""create or replace temp view revenue0 (supplier_no, total_revenue) a
     and l_shipdate < date '1996-01-01' + interval '3' month
   group by l_suppkey""")
 
-val queries = Seq(
+spark.conf.set("spark.sql.adaptive.enabled", "false")
+spark.conf.set("spark.sql.shuffle.partitions", "8")
+println("OK: AQE off; shuffle partitions fixed")
+
+val tpch = Seq(
   "Q1" ->"""select l_returnflag, l_linestatus, sum(l_quantity) as sum_qty, sum(l_extendedprice) as sum_base_price, sum(l_extendedprice * (1 - l_discount)) as sum_disc_price, sum(l_extendedprice * (1 - l_discount) * (1 + l_tax)) as sum_charge, avg(l_quantity) as avg_qty, avg(l_extendedprice) as avg_price, avg(l_discount) as avg_disc, count(*) as count_order from lineitem where l_shipdate <= date '1998-12-01' - interval '90' day group by l_returnflag, l_linestatus order by l_returnflag, l_linestatus""",
   "Q2" ->"""select s_acctbal, s_name, n_name, p_partkey, p_mfgr, s_address, s_phone, s_comment from part, supplier, partsupp, nation, region where p_partkey = ps_partkey and s_suppkey = ps_suppkey and p_size = 15 and p_type like '%BRASS' and s_nationkey = n_nationkey and n_regionkey = r_regionkey and r_name = 'EUROPE' and ps_supplycost = (select min(ps_supplycost) from partsupp, supplier, nation, region where p_partkey = ps_partkey and s_suppkey = ps_suppkey and s_nationkey = n_nationkey and n_regionkey = r_regionkey and r_name = 'EUROPE') order by s_acctbal desc, n_name, s_name, p_partkey limit 100""",
   "Q3" ->"""select l_orderkey, sum(l_extendedprice * (1 - l_discount)) as revenue, o_orderdate, o_shippriority from customer, orders, lineitem where c_mktsegment = 'BUILDING' and c_custkey = o_custkey and l_orderkey = o_orderkey and o_orderdate < date '1995-03-15' and l_shipdate > date '1995-03-15' group by l_orderkey, o_orderdate, o_shippriority order by revenue desc, o_orderdate limit 10""",
@@ -73,22 +78,60 @@ val queries = Seq(
   "Q22"->"""select cntrycode, count(*) as numcust, sum(c_acctbal) as totacctbal from (select substring(c_phone, 1, 2) as cntrycode, c_acctbal from customer where substring(c_phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17') and c_acctbal > (select avg(c_acctbal) from customer where c_acctbal > 0.00 and substring(c_phone, 1, 2) in ('13', '31', '23', '29', '30', '18', '17')) and not exists (select * from orders where o_custkey = c_custkey)) as custsale group by cntrycode order by cntrycode"""
 )
 
-// Warm up
-spark.sql(queries.head._2).collect()
+val q21Sql = tpch.find(_._1 == "Q21").map(_._2).getOrElse("")
 
-println("\n── Results ──────────────────────────────────────────────")
-val times = queries.map { case (name, sql) =>
-  val t0   = System.nanoTime
-  spark.sql(sql).collect()
-  val secs = (System.nanoTime - t0) / 1e9
-  println(f"$name%-3s  $secs%8.3f s")
-  (name, secs)
+def showQ21PlanSummary(label: String): Unit = {
+  println(s"\n--- Q21 plan summary ($label) ---")
+  val plan = spark.sql(q21Sql).queryExecution.executedPlan.toString()
+  plan
+    .split("\\n")
+    .filter(line => line.contains("SortMergeJoin") || line.contains("CometSortMergeJoin") || line.contains("BroadcastHashJoin"))
+    .foreach(println)
 }
 
-val total = times.map(_._2).sum
-val q21   = times.find(_._1 == "Q21").map(_._2).getOrElse(0.0)
-println(f"\nTotal: $total%.1f s")
-println(f"Q21:   $q21%.3f s  (expected ~30s without fix, ~2s with fix)")
-println("========================================================")
+println("\n=== Run 1: Legacy Join Filter ===")
+spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "true")
+spark.conf.set("Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "false")
+showQ21PlanSummary("legacy")
+val legacyTimes = tpch.map { case (n, q) =>
+  val df = spark.sql(q)
+  val t0 = System.nanoTime
+  df.collect()
+  val secs = (System.nanoTime - t0) / 1e9
+  println(f"$n%-3s  $secs%8.3f s")
+  (n, secs)
+}.toMap
+
+println("\n=== Run 2: Pranav Join Filter ===")
+spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "false")
+spark.conf.set("Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "true")
+showQ21PlanSummary("pranav")
+val pranavTimes = tpch.map { case (n, q) =>
+  val df = spark.sql(q)
+  val t0 = System.nanoTime
+  df.collect()
+  val secs = (System.nanoTime - t0) / 1e9
+  println(f"$n%-3s  $secs%8.3f s")
+  (n, secs)
+}.toMap
+
+println("\n=== Comparison (Legacy vs Pranav) ===")
+println("%-4s  %12s  %12s  %9s".format("Q", "Legacy(s)", "Pranav(s)", "L/P"))
+tpch.foreach { case (n, _) =>
+  val l = legacyTimes.getOrElse(n, 0.0)
+  val p = pranavTimes.getOrElse(n, 0.0)
+  val ratio = if (p > 0) l / p else 0.0
+  println(f"$n%-4s  $l%12.3f  $p%12.3f  $ratio%8.2fx")
+}
+
+val q21Legacy = legacyTimes.getOrElse("Q21", 0.0)
+val q21Pranav = pranavTimes.getOrElse("Q21", 0.0)
+val q21Ratio = if (q21Pranav > 0) q21Legacy / q21Pranav else 0.0
+println("--------------------------------------")
+println(f"Q21 legacy:   $q21Legacy%.3f s")
+println(f"Q21 pranav:   $q21Pranav%.3f s")
+println(f"Q21 L/P:      $q21Ratio%.2fx")
+
+println("\nDone: two TPCH timing passes completed.")
 System.exit(0)
 SCALA

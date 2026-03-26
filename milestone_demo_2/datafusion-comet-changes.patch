@@ -1,0 +1,118 @@
+diff --git a/common/src/main/scala/org/apache/comet/CometConf.scala b/common/src/main/scala/org/apache/comet/CometConf.scala
+index 4d2e3792..8711536b 100644
+--- a/common/src/main/scala/org/apache/comet/CometConf.scala
++++ b/common/src/main/scala/org/apache/comet/CometConf.scala
+@@ -308,7 +308,14 @@ object CometConf extends ShimCometConf {
+           "of the JVM implementation. This can improve performance for queries that need to " +
+           "convert between columnar and row formats.")
+       .booleanConf
+-      .createWithDefault(true)
++      .createWithDefault(false)
++
++  val COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_PRANAV_ENABLED: ConfigEntry[Boolean] =
++    conf("Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled")
++      .category(CATEGORY_ENABLE_EXEC)
++      .doc("Enable Pranav optimized native Sort Merge Join with filter")
++      .booleanConf
++      .createWithDefault(false)
+ 
+   val COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_ENABLED: ConfigEntry[Boolean] =
+     conf("spark.comet.exec.sortMergeJoinWithJoinFilter.enabled")
+diff --git a/native/Cargo.toml b/native/Cargo.toml
+index cc08aa1b..cdba704d 100644
+--- a/native/Cargo.toml
++++ b/native/Cargo.toml
+@@ -58,6 +58,14 @@ aws-credential-types = "1.2.13"
+ iceberg = { git = "https://github.com/apache/iceberg-rust", tag = "v0.9.0-rc.1" }
+ iceberg-storage-opendal = { git = "https://github.com/apache/iceberg-rust", tag = "v0.9.0-rc.1", features = ["opendal-all"] }
+ 
++[patch.crates-io]
++datafusion = { path = "/root/datafusion/datafusion" }
++datafusion-physical-plan = { path = "/root/datafusion/datafusion/physical-plan" }
++datafusion-execution = { path = "/root/datafusion/datafusion/execution" }
++datafusion-expr = { path = "/root/datafusion/datafusion/expr" }
++datafusion-common = { path = "/root/datafusion/datafusion/common" }
++datafusion-physical-expr = { path = "/root/datafusion/datafusion/physical-expr" }
++
+ [profile.release]
+ debug = true
+ overflow-checks = false
+diff --git a/native/core/src/execution/planner.rs b/native/core/src/execution/planner.rs
+index bd377559..783a5eb3 100644
+--- a/native/core/src/execution/planner.rs
++++ b/native/core/src/execution/planner.rs
+@@ -1589,8 +1589,16 @@ impl PhysicalPlanner {
+ 
+                 let left = Arc::clone(&join_params.left.native_plan);
+                 let right = Arc::clone(&join_params.right.native_plan);
++                let filtered_smj_mode = if spark_plan
++                    .sort_merge_join
++                    .get_pranav_filtered_smj_enabled()
++                {
++                    crate::joins::sort_merge_join::exec::FilteredSmjMode::Pranav
++                } else {
++                    crate::joins::sort_merge_join::exec::FilteredSmjMode::Legacy
++                };
+ 
+-                let join = Arc::new(SortMergeJoinExec::try_new(
++                let join = Arc::new(SortMergeJoinExec::try_new_with_mode(
+                     Arc::clone(&left),
+                     Arc::clone(&right),
+                     join_params.join_on,
+@@ -1600,6 +1608,7 @@ impl PhysicalPlanner {
+                     // null doesn't equal to null in Spark join key. If the join key is
+                     // `EqualNullSafe`, Spark will rewrite it during planning.
+                     NullEquality::NullEqualsNothing,
++                    filtered_smj_mode,
+                 )?);
+ 
+                 if join.filter.is_some() {
+diff --git a/native/proto/src/proto/operator.proto b/native/proto/src/proto/operator.proto
+index 4afc1fef..f0623692 100644
+--- a/native/proto/src/proto/operator.proto
++++ b/native/proto/src/proto/operator.proto
+@@ -342,6 +342,7 @@ message SortMergeJoin {
+   JoinType join_type = 3;
+   repeated spark.spark_expression.Expr sort_options = 4;
+   optional spark.spark_expression.Expr condition = 5;
++  bool pranav_filtered_smj_enabled = 6;
+ }
+ 
+ enum JoinType {
+diff --git a/spark/src/main/scala/org/apache/spark/sql/comet/operators.scala b/spark/src/main/scala/org/apache/spark/sql/comet/operators.scala
+index da2ae21a..7bad5e6d 100644
+--- a/spark/src/main/scala/org/apache/spark/sql/comet/operators.scala
++++ b/spark/src/main/scala/org/apache/spark/sql/comet/operators.scala
+@@ -1963,12 +1963,18 @@ object CometSortMergeJoinExec extends CometOperatorSerde[SortMergeJoinExec] {
+       }
+     }
+ 
+-    if (join.condition.isDefined &&
+-      !CometConf.COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_ENABLED
+-        .get(join.conf)) {
++    val legacyFilteredSmjEnabled =
++      CometConf.COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_ENABLED.get(join.conf)
++
++    val pranavFilteredSmjEnabled =
++      CometConf.COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_PRANAV_ENABLED.get(join.conf)
++
++    if (join.condition.isDefined && !(legacyFilteredSmjEnabled || pranavFilteredSmjEnabled)) {
+       withInfo(
+         join,
+-        s"${CometConf.COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_ENABLED.key} is not enabled",
++        s"${CometConf.COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_ENABLED.key} or " +
++          s"${CometConf.COMET_EXEC_SORT_MERGE_JOIN_WITH_JOIN_FILTER_PRANAV_ENABLED.key} " +
++          "is not enabled",
+         join.condition.get)
+       return None
+     }
+@@ -2029,6 +2035,9 @@ object CometSortMergeJoinExec extends CometOperatorSerde[SortMergeJoinExec] {
+         .addAllLeftJoinKeys(leftKeys.map(_.get).asJava)
+         .addAllRightJoinKeys(rightKeys.map(_.get).asJava)
+       condition.map(joinBuilder.setCondition)
++      if (pranavFilteredSmjEnabled) {
++        joinBuilder.setPranavFilteredSmjEnabled(true)
++      }
+       Some(builder.setSortMergeJoin(joinBuilder).build())
+     } else {
+       val allExprs: Seq[Expression] = join.leftKeys ++ join.rightKeys
