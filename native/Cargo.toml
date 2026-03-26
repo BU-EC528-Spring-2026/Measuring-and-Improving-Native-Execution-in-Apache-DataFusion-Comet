@@ -61,6 +61,35 @@ iceberg-storage-opendal = { git = "https://github.com/apache/iceberg-rust", rev 
 smallvec = "1.13"
 hashbrown = "0.14"
 
+[patch.crates-io]
+datafusion = { path = "../third_party/datafusion/datafusion/core" }
+datafusion-common = { path = "../third_party/datafusion/datafusion/common" }
+datafusion-common-runtime = { path = "../third_party/datafusion/datafusion/common-runtime" }
+datafusion-execution = { path = "../third_party/datafusion/datafusion/execution" }
+datafusion-expr = { path = "../third_party/datafusion/datafusion/expr" }
+datafusion-functions = { path = "../third_party/datafusion/datafusion/functions" }
+datafusion-functions-aggregate = { path = "../third_party/datafusion/datafusion/functions-aggregate" }
+datafusion-functions-nested = { path = "../third_party/datafusion/datafusion/functions-nested" }
+datafusion-functions-table = { path = "../third_party/datafusion/datafusion/functions-table" }
+datafusion-functions-window = { path = "../third_party/datafusion/datafusion/functions-window" }
+datafusion-catalog = { path = "../third_party/datafusion/datafusion/catalog" }
+datafusion-catalog-listing = { path = "../third_party/datafusion/datafusion/catalog-listing" }
+datafusion-datasource = { path = "../third_party/datafusion/datafusion/datasource" }
+datafusion-datasource-csv = { path = "../third_party/datafusion/datafusion/datasource-csv" }
+datafusion-datasource-json = { path = "../third_party/datafusion/datafusion/datasource-json" }
+datafusion-datasource-parquet = { path = "../third_party/datafusion/datafusion/datasource-parquet" }
+datafusion-macros = { path = "../third_party/datafusion/datafusion/macros" }
+datafusion-optimizer = { path = "../third_party/datafusion/datafusion/optimizer" }
+datafusion-physical-expr = { path = "../third_party/datafusion/datafusion/physical-expr" }
+datafusion-physical-expr-common = { path = "../third_party/datafusion/datafusion/physical-expr-common" }
+datafusion-physical-expr-adapter = { path = "../third_party/datafusion/datafusion/physical-expr-adapter" }
+datafusion-physical-optimizer = { path = "../third_party/datafusion/datafusion/physical-optimizer" }
+datafusion-physical-plan = { path = "../third_party/datafusion/datafusion/physical-plan" }
+datafusion-sql = { path = "../third_party/datafusion/datafusion/sql" }
+datafusion-functions-aggregate-common = { path = "../third_party/datafusion/datafusion/functions-aggregate-common" }
+
+
+
 [profile.release]
 debug = true
 overflow-checks = false
