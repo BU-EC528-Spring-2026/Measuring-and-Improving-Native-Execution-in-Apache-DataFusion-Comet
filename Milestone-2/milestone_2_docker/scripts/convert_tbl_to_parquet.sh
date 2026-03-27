@@ -1,16 +1,21 @@
 #!/bin/bash
 set -e
 SPARK_HOME=${SPARK_HOME:-/opt/spark}
-COMET_SPARK_JAR=${COMET_SPARK_JAR:-/opt/comet-spark.jar}
-COMET_COMMON_JAR=${COMET_COMMON_JAR:-/opt/comet-common.jar}
+# COMET_SPARK_JAR=${COMET_SPARK_JAR:-/opt/comet-spark.jar}
+# COMET_COMMON_JAR=${COMET_COMMON_JAR:-/opt/comet-common.jar}
+COMET_JAR=${COMET_JAR:-/opt/comet-spark.jar}
 TBL_DIR=${TBL_DIR:-/opt/tpch-dbgen/data/sf1}
 PARQUET_DIR=${PARQUET_DIR:-/opt/tpch-dbgen/data/sf1_parquet}
 
 echo "Converting TPC-H .tbl -> Parquet..."
 
+  # --jars "$COMET_SPARK_JAR,$COMET_COMMON_JAR" \
+  # --conf spark.driver.extraClassPath="$COMET_SPARK_JAR:$COMET_COMMON_JAR" \
+
+
 $SPARK_HOME/bin/spark-shell --driver-memory 4g \
-  --jars "$COMET_SPARK_JAR,$COMET_COMMON_JAR" \
-  --conf spark.driver.extraClassPath="$COMET_SPARK_JAR:$COMET_COMMON_JAR" \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
   --conf spark.plugins=org.apache.spark.CometPlugin \
   --conf spark.comet.enabled=true \
   << 'SCALA'
