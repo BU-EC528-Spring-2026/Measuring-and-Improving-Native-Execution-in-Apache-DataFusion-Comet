@@ -42,10 +42,12 @@ RUN wget -q https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-$
 
 # ── Comet 0.14.0 built from JAR ───────────────────────────────────
 # Use pre-built JARs w/ TPC-H fixes
-COPY comet-spark-spark3.5_2.12-0.14.0.jar /opt/comet-spark.jar
-COPY comet-common-spark3.5_2.12-0.14.0.jar /opt/comet-common.jar
-RUN echo "Comet Spark JAR ready: /opt/comet-spark.jar"
-RUN echo "Comet common JAR ready: /opt/comet-common.jar"
+# COPY comet-spark-linux.jar /opt/comet-spark.jar
+COPY comet-spark-fixed.jar /opt/comet-spark.jar
+# COPY comet-spark-spark3.5_2.12-0.14.0.jar /opt/comet-spark.jar
+# COPY comet-common-spark3.5_2.12-0.14.0.jar /opt/comet-common.jar
+# RUN echo "Comet Spark JAR ready: /opt/comet-spark.jar"
+# RUN echo "Comet common JAR ready: /opt/comet-common.jar"
 
 # # ── Comet 0.14.0-SNAPSHOT built from source ───────────────────────────────────
 # # Builds Comet from source with the TPC-H fixes

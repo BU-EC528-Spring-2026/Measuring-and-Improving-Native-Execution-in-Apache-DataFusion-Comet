@@ -3,10 +3,11 @@
 # Usage: bash /opt/scripts/run_demo.sh
 
 SPARK_HOME=/opt/spark
-COMET_SPARK_JAR=/opt/comet-spark.jar
-COMET_COMMON_JAR=/opt/comet-common.jar
-ALL_COMET_JARS="$COMET_SPARK_JAR,$COMET_COMMON_JAR"
-ALL_COMET_CP="$COMET_SPARK_JAR:$COMET_COMMON_JAR"
+# COMET_SPARK_JAR=/opt/comet-spark.jar
+# COMET_COMMON_JAR=/opt/comet-common.jar
+COMET_JAR=/opt/comet-spark.jar
+# ALL_COMET_JARS="$COMET_SPARK_JAR,$COMET_COMMON_JAR"
+# ALL_COMET_CP="$COMET_SPARK_JAR:$COMET_COMMON_JAR"
 
 echo "========================================================"
 echo "  DataFusion Comet — TPC-H Benchmark"
@@ -14,10 +15,13 @@ echo "  Spark 3.5.8 + Comet 0.14.0"
 echo "  Spark UI -> http://localhost:4040"
 echo "========================================================"
 
+  # --jars "$ALL_COMET_JARS" \
+  # --conf spark.driver.extraClassPath="$ALL_COMET_CP" \
+  # --conf spark.executor.extraClassPath="$ALL_COMET_CP" \
 $SPARK_HOME/bin/spark-shell \
-  --jars "$ALL_COMET_JARS" \
-  --conf spark.driver.extraClassPath="$ALL_COMET_CP" \
-  --conf spark.executor.extraClassPath="$ALL_COMET_CP" \
+  --jars "$COMET_JAR" \
+  --conf spark.driver.extraClassPath="$COMET_JAR" \
+  --conf spark.executor.extraClassPath="$COMET_JAR" \
   --conf spark.plugins=org.apache.spark.CometPlugin \
   --conf spark.comet.enabled=true \
   --conf spark.comet.explainFallback.enabled=true \

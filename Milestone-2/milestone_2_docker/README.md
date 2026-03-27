@@ -4,7 +4,7 @@
 ## Requirements
 - Docker Desktop (Mac/Windows) or Docker Engine (Linux)
 - At 10 GB disk space recommended
-- Prebuilt 0.14.0 Comet Spark + Common Jars in working directory
+- Prebuilt 0.14.0 Comet Spark Jar (comet-spark-fixed.jar) in working directory
 
 ## Quick start
 
@@ -28,5 +28,6 @@ Open **http://localhost:4040** while queries are running to see the Spark UI.
 All subsequent `docker compose run` calls start instantly from the cached image.
 
 ## Current Issues
-As of 3/25, the custom SMJ flag does not appear to be contributing to a speed up in regards to Q21. Due to the complexity of the build for this project, its difficult to pinpoint/debug what the exact issue is, especially with the current given timeframe. So currently, the demo script runs the TPC-H benchmarks twice, once with the traditional/legacy SMJ flag enabled and once with the custom SMJ flag enabled, but there likely won't be significant improvement with the custom SMJ run until this issue is fixed.
+~~As of 3/25, the custom SMJ flag does not appear to be contributing to a speed up in regards to Q21. Due to the complexity of the build for this project, its difficult to pinpoint/debug what the exact issue is, especially with the current given timeframe. So currently, the demo script runs the TPC-H benchmarks twice, once with the traditional/legacy SMJ flag enabled and once with the custom SMJ flag enabled, but there likely won't be significant improvement with the custom SMJ run until this issue is fixed.~~ This is fixed now after rebuilding the jar inside the Docker
+
 
