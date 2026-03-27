@@ -33,7 +33,7 @@ $SPARK_HOME/bin/spark-shell \
   --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager \
   --conf spark.comet.exec.localTableScan.enabled=true \
   --conf spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=true \
-  --conf Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled=false \
+  --conf spark.comet.exec.sortMergeJoinWithJoinFilter.pranav.enabled=false \
   << 'SCALA'
 
 val parquetDir = "/opt/tpch-dbgen/data/sf1_parquet"
@@ -95,7 +95,7 @@ def showQ21PlanSummary(label: String): Unit = {
 
 println("\n=== Run 1: Legacy Join Filter ===")
 spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "true")
-spark.conf.set("Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "false")
+spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.pranav.enabled", "false")
 showQ21PlanSummary("legacy")
 val legacyTimes = tpch.map { case (n, q) =>
   val df = spark.sql(q)
@@ -108,7 +108,7 @@ val legacyTimes = tpch.map { case (n, q) =>
 
 println("\n=== Run 2: Custom Join Filter ===")
 spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "false")
-spark.conf.set("Pranav_spark.comet.exec.sortMergeJoinWithJoinFilter.enabled", "true")
+spark.conf.set("spark.comet.exec.sortMergeJoinWithJoinFilter.pranav.enabled", "true")
 showQ21PlanSummary("custom")
 val customTimes = tpch.map { case (n, q) =>
   val df = spark.sql(q)
