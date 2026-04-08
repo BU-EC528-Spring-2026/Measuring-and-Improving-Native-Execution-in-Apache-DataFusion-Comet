@@ -4,7 +4,7 @@ Build tools to measure when Spark/Comet runs natively vs falls back to the JVM, 
 ## Milestone 1 
 [Milestone-1 Demo Slides](https://docs.google.com/presentation/d/1qz283JJU4f3b5nkYB6LcMGmSH7l9a-mlz4jA6gLT01A/edit?usp=sharing)
 
-Other material (Design Doc, Quiz Question) found [here](/Milestone-1 Demo Slides & Quiz question)
+Other material (Design Doc, Quiz Question) found in Milestone-1 Demo Slides & Quiz question folder.
 
 ## Milestone 2
 [Milestone-2 Demo Slides](https://docs.google.com/presentation/d/1OnotfQsGZAIYiK2d7QiZ56sUyK0IAfdN_5ipdl0tRgg/edit?usp=sharing)
