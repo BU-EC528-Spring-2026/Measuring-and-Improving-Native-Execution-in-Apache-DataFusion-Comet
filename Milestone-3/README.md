@@ -97,7 +97,7 @@ cp native/target/release/libcomet.dylib common/target/classes/org/apache/comet/d
 jar uf "$COMET_JAR" -C common/target/classes org/apache/comet/darwin/aarch64/libcomet.dylib
 ```
 
-### Linux (recommended for graders)
+### Linux
 
 ```bash
 mkdir -p common/target/classes/org/apache/comet/linux/x86_64
