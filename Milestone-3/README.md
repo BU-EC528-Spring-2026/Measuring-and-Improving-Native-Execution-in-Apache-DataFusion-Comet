@@ -1,5 +1,3 @@
-Got it — here is **pure README.md Markdown**, no extra formatting, ready to paste directly:
-
 ---
 
 # 🚀 Comet Build & Run Instructions
