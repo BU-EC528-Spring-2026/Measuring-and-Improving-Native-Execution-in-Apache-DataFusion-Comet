@@ -1,3 +1,4 @@
+````markdown
 # Comet Build & Run Instructions
 
 ## Clone the Repository
@@ -5,7 +6,7 @@
 ```bash
 git clone -b pchintar-course-clean https://github.com/BU-EC528-Spring-2026/Measuring-and-Improving-Native-Execution-in-Apache-DataFusion-Comet.git
 cd Measuring-and-Improving-Native-Execution-in-Apache-DataFusion-Comet
-```
+````
 
 ---
 
@@ -17,12 +18,14 @@ cd Measuring-and-Improving-Native-Execution-in-Apache-DataFusion-Comet
 
 ```bash
 brew install openjdk@17
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
 ```
 
 **Linux**
 
 ```bash
 sudo apt update && sudo apt install openjdk-17-jdk -y
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ```
 
 ---
@@ -122,8 +125,6 @@ org/apache/comet/<platform>/<arch>/libcomet.*
 ## Run Spark with Comet
 
 ```bash
-export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java)))) 2>/dev/null || export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-
 $SPARK_HOME/bin/spark-shell \
   --jars "$COMET_JAR" \
   --conf spark.driver.extraClassPath="$COMET_JAR" \
@@ -142,13 +143,9 @@ $SPARK_HOME/bin/spark-shell \
 
 ## Notes
 
-* macOS → `.dylib`, Linux → `.so`
-* Mismatch → `UnsatisfiedLinkError`
-* Linux path recommended for graders/cloud
-* Tested on macOS; Linux instructions provided
+* macOS uses `.dylib`, Linux uses `.so`
+* Incorrect platform library → `UnsatisfiedLinkError`
+* We Tested on macOS; Linux instructions provided for compatibility
 
 ---
 
-## Result
-
-Comet is built, native library embedded, and Spark runs with Comet enabled.
