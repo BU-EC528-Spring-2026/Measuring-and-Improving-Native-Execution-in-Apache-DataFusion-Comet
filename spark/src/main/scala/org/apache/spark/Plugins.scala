@@ -28,6 +28,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config.{EXECUTOR_MEMORY, EXECUTOR_MEMORY_OVERHEAD, EXECUTOR_MEMORY_OVERHEAD_FACTOR}
 import org.apache.spark.sql.internal.StaticSQLConf
 
+import org.apache.comet.CometConf
 import org.apache.comet.CometConf.COMET_ONHEAP_ENABLED
 import org.apache.comet.CometSparkSessionExtensions
 
@@ -52,6 +53,15 @@ class CometDriverPlugin extends DriverPlugin with Logging with ShimCometDriverPl
       !sc.getConf.getBoolean(COMET_ONHEAP_ENABLED.key, false)) {
       logWarning("Comet plugin is disabled because Spark is not running in off-heap mode.")
       return Collections.emptyMap[String, String]
+    }
+
+    // Auto-set cache serializer for in-memory cache
+    if (sc.getConf.getBoolean(CometConf.COMET_EXEC_IN_MEMORY_CACHE_ENABLED.key, false)) {
+      val serializerKey = "spark.sql.cache.serializer"
+      val serializerValue =
+        "org.apache.spark.sql.comet.execution.arrow.ArrowCachedBatchSerializer"
+      sc.conf.set(serializerKey, serializerValue)
+      logInfo(s"Auto-set $serializerKey=$serializerValue for Comet in-memory cache")
     }
 
     // register CometSparkSessionExtensions if it isn't already registered

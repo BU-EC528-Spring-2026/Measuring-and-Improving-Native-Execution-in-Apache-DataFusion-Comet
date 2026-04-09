@@ -41,6 +41,7 @@ workspace = true
 name = "datafusion_functions_aggregate"
 
 [dependencies]
+bincode = "1"
 ahash = { workspace = true }
 arrow = { workspace = true }
 datafusion-common = { workspace = true }

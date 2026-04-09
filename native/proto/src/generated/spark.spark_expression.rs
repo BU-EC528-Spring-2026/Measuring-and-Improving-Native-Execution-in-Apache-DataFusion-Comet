@@ -355,7 +355,7 @@ pub mod expr {
 pub struct AggExpr {
     #[prost(
         oneof = "agg_expr::ExprStruct",
-        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18"
+        tags = "2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
     )]
     pub expr_struct: ::core::option::Option<agg_expr::ExprStruct>,
 }
@@ -397,6 +397,10 @@ pub mod agg_expr {
         MaxBy(super::MaxBy),
         #[prost(message, tag = "18")]
         MinBy(super::MinBy),
+        #[prost(message, tag = "19")]
+        Mode(super::Mode),
+        #[prost(message, tag = "20")]
+        CountIf(super::CountIf),
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -529,6 +533,18 @@ pub struct MinBy {
     pub ordering: ::core::option::Option<Expr>,
     #[prost(message, optional, tag = "3")]
     pub datatype: ::core::option::Option<DataType>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Mode {
+    #[prost(message, optional, tag = "1")]
+    pub child: ::core::option::Option<Expr>,
+    #[prost(message, optional, tag = "2")]
+    pub datatype: ::core::option::Option<DataType>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CountIf {
+    #[prost(message, optional, tag = "1")]
+    pub child: ::core::option::Option<Expr>,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Correlation {

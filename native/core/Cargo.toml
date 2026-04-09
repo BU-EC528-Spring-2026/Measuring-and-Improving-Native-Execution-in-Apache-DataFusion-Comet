@@ -35,6 +35,7 @@ include = [
 publish = false
 
 [dependencies]
+datafusion-functions-aggregate = { path = "../../third_party/datafusion/datafusion/functions-aggregate" }
 arrow = { workspace = true }
 parquet = { workspace = true, default-features = false, features = ["experimental", "arrow"] }
 futures = { workspace = true }

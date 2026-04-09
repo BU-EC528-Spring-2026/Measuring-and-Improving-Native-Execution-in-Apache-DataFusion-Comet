@@ -110,6 +110,8 @@ message AggExpr {
     BloomFilterAgg bloomFilterAgg = 16;
     MaxBy max_by = 17;
     MinBy min_by = 18;
+    Mode mode = 19;
+    CountIf count_if = 20;
   }
 }
 
@@ -204,6 +206,15 @@ message MinBy {
   Expr value = 1;
   Expr ordering = 2;
   DataType datatype = 3;
+}
+
+message Mode {
+  Expr child = 1;
+  DataType datatype = 2;
+}
+
+message CountIf {
+  Expr child = 1;
 }
 
 message Correlation {

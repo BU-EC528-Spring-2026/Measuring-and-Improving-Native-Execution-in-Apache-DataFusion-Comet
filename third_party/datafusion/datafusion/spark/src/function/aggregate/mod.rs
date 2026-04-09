@@ -19,12 +19,16 @@ use datafusion_expr::AggregateUDF;
 use std::sync::Arc;
 
 pub mod avg;
+pub mod count_if;
 pub mod try_sum;
+pub mod mode;
 
 pub mod expr_fn {
     use datafusion_functions::export_functions;
 
     export_functions!((avg, "Returns the average value of a given column", arg1));
+    export_functions!((mode, "Returns the most frequent non-null value", arg1));
+    export_functions!((count_if, "Returns number of TRUE values", arg1));
     export_functions!((
         try_sum,
         "Returns the sum of values for a column, or NULL if overflow occurs",
@@ -40,6 +44,14 @@ pub fn try_sum() -> Arc<AggregateUDF> {
     Arc::new(AggregateUDF::new_from_impl(try_sum::SparkTrySum::new()))
 }
 
+pub fn mode() -> Arc<AggregateUDF> {
+    mode::mode()
+}
+pub fn count_if() -> Arc<AggregateUDF> {
+    count_if::count_if()
+}
+
+
 pub fn functions() -> Vec<Arc<AggregateUDF>> {
-    vec![avg(), try_sum()]
+    vec![avg(), count_if(), mode(), try_sum()]
 }

@@ -129,6 +129,7 @@ use datafusion_comet_proto::{
     spark_partitioning::{partitioning::PartitioningStruct, Partitioning as SparkPartitioning},
 };
 use datafusion_comet_spark_expr::monotonically_increasing_id::MonotonicallyIncreasingId;
+use datafusion_functions_aggregate::{count_if::count_if_udaf, mode::mode_udaf};
 use datafusion_comet_spark_expr::{
     ArrayInsert, Avg, AvgDecimal, Cast, CheckOverflow, Correlation, Covariance, CreateNamedStruct,
     GetArrayStructFields, GetStructField, IfExpr, ListExtract, NormalizeNaNAndZero, RandExpr,
@@ -1954,6 +1955,33 @@ impl PhysicalPlanner {
                     .build()
                     .map_err(|e| ExecutionError::DataFusionError(e.to_string()))
             }
+
+            AggExprStruct::Mode(expr) => {
+                let child = self.create_expr(expr.child.as_ref().unwrap(), Arc::clone(&schema))?;
+                let datatype = to_arrow_datatype(expr.datatype.as_ref().unwrap());
+                let child = Arc::new(CastExpr::new(child, datatype.clone(), None));
+
+                AggregateExprBuilder::new(mode_udaf(), vec![child])
+                    .schema(schema)
+                    .alias("mode")
+                    .with_ignore_nulls(false)
+                    .with_distinct(false)
+                    .build()
+                    .map_err(|e| ExecutionError::DataFusionError(e.to_string()))
+            }
+
+            AggExprStruct::CountIf(expr) => {
+                let child = self.create_expr(expr.child.as_ref().unwrap(), Arc::clone(&schema))?;
+
+                AggregateExprBuilder::new(count_if_udaf(), vec![child])
+                    .schema(schema)
+                    .alias("count_if")
+                    .with_ignore_nulls(false)
+                    .with_distinct(false)
+                    .build()
+                    .map_err(|e| ExecutionError::DataFusionError(e.to_string()))
+            }
+
             AggExprStruct::Sum(expr) => {
                 let child = self.create_expr(expr.child.as_ref().unwrap(), Arc::clone(&schema))?;
                 let datatype = to_arrow_datatype(expr.datatype.as_ref().unwrap());

@@ -22,7 +22,7 @@ package org.apache.comet.serde
 import scala.jdk.CollectionConverters._
 
 import org.apache.spark.sql.catalyst.expressions.Attribute
-import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, BitAndAgg, BitOrAgg, BitXorAgg, BloomFilterAggregate, CentralMomentAgg, Corr, Count, Covariance, CovPopulation, CovSample, First, Last, Max, MaxBy, Min, MinBy, StddevPop, StddevSamp, Sum, VariancePop, VarianceSamp}
+import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, Average, BitAndAgg, BitOrAgg, BitXorAgg, BloomFilterAggregate, CentralMomentAgg, Corr, Count, CountIf, Covariance, CovPopulation, CovSample, First, Last, Max, MaxBy, Min, MinBy, Mode, StddevPop, StddevSamp, Sum, VariancePop, VarianceSamp}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{ByteType, DataTypes, DecimalType, IntegerType, LongType, ShortType, StringType}
 
@@ -31,6 +31,65 @@ import org.apache.comet.CometConf.COMET_EXEC_STRICT_FLOATING_POINT
 import org.apache.comet.CometSparkSessionExtensions.withInfo
 import org.apache.comet.serde.QueryPlanSerde.{evalModeToProto, exprToProto, serializeDataType}
 import org.apache.comet.shims.CometEvalModeUtil
+
+object CometMode extends CometAggregateExpressionSerde[Mode] {
+  override def convert(
+      aggExpr: AggregateExpression,
+      expr: Mode,
+      inputs: Seq[Attribute],
+      binding: Boolean,
+      conf: SQLConf): Option[ExprOuterClass.AggExpr] = {
+
+    val child = expr.children.head
+    val childExpr = exprToProto(child, inputs, binding)
+    val dataType = serializeDataType(expr.dataType)
+
+    if (childExpr.isDefined && dataType.isDefined) {
+      val builder = ExprOuterClass.Mode.newBuilder()
+      builder.setChild(childExpr.get)
+      builder.setDatatype(dataType.get)
+
+      Some(
+        ExprOuterClass.AggExpr
+          .newBuilder()
+          .setMode(builder)
+          .build())
+    } else if (dataType.isEmpty) {
+      withInfo(aggExpr, s"datatype ${expr.dataType} is not supported", child)
+      None
+    } else {
+      withInfo(aggExpr, child)
+      None
+    }
+  }
+}
+
+object CometCountIf extends CometAggregateExpressionSerde[CountIf] {
+  override def convert(
+      aggExpr: AggregateExpression,
+      expr: CountIf,
+      inputs: Seq[Attribute],
+      binding: Boolean,
+      conf: SQLConf): Option[ExprOuterClass.AggExpr] = {
+
+    val child = expr.children.head
+    val childExpr = exprToProto(child, inputs, binding)
+
+    if (childExpr.isDefined) {
+      val builder = ExprOuterClass.CountIf.newBuilder()
+      builder.setChild(childExpr.get)
+
+      Some(
+        ExprOuterClass.AggExpr
+          .newBuilder()
+          .setCountIf(builder)
+          .build())
+    } else {
+      withInfo(aggExpr, child)
+      None
+    }
+  }
+}
 
 object CometMin extends CometAggregateExpressionSerde[Min] {
 
@@ -533,7 +592,6 @@ object CometMinBy extends CometAggregateExpressionSerde[MinBy] {
     }
   }
 }
-
 trait CometVariance {
   def convertVariance(
       aggExpr: AggregateExpression,

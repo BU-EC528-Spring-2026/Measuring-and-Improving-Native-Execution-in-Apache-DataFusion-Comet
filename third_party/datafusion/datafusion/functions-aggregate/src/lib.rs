@@ -77,12 +77,14 @@ pub mod bit_and_or_xor;
 pub mod bool_and_or;
 pub mod correlation;
 pub mod count;
+pub mod count_if;
 pub mod covariance;
 pub mod first_last;
 pub mod grouping;
 pub mod hyperloglog;
 pub mod median;
 pub mod min_max;
+pub mod mode;
 pub mod nth_value;
 pub mod percentile_cont;
 pub mod regr;
@@ -118,6 +120,7 @@ pub mod expr_fn {
     pub use super::bool_and_or::bool_or;
     pub use super::correlation::corr;
     pub use super::count::count;
+    pub use super::count_if::count_if;
     pub use super::count::count_distinct;
     pub use super::covariance::covar_pop;
     pub use super::covariance::covar_samp;
@@ -127,6 +130,7 @@ pub mod expr_fn {
     pub use super::median::median;
     pub use super::min_max::max;
     pub use super::min_max::min;
+    pub use super::mode::mode;
     pub use super::nth_value::nth_value;
     pub use super::percentile_cont::percentile_cont;
     pub use super::regr::regr_avgx;
@@ -159,7 +163,9 @@ pub fn all_default_aggregate_functions() -> Vec<Arc<AggregateUDF>> {
         min_max::max_udaf(),
         min_max::min_udaf(),
         median::median_udaf(),
+        mode::mode_udaf(),
         count::count_udaf(),
+        count_if::count_if_udaf(),
         regr::regr_slope_udaf(),
         regr::regr_intercept_udaf(),
         regr::regr_count_udaf(),
