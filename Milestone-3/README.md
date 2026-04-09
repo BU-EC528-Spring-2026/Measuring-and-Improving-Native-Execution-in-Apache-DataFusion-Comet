@@ -1,4 +1,3 @@
-````markdown
 # Comet Build & Run Instructions
 
 ## Clone the Repository
