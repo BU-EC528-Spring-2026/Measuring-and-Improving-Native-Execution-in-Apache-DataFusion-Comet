@@ -55,14 +55,18 @@ class CometDriverPlugin extends DriverPlugin with Logging with ShimCometDriverPl
       return Collections.emptyMap[String, String]
     }
 
-    // Auto-set cache serializer for in-memory cache
-    if (sc.getConf.getBoolean(CometConf.COMET_EXEC_IN_MEMORY_CACHE_ENABLED.key, false)) {
-      val serializerKey = "spark.sql.cache.serializer"
-      val serializerValue =
-        "org.apache.spark.sql.comet.execution.arrow.ArrowCachedBatchSerializer"
-      sc.conf.set(serializerKey, serializerValue)
-      logInfo(s"Auto-set $serializerKey=$serializerValue for Comet in-memory cache")
-    }
+    val extraConfs = new ju.HashMap[String, String]()
+
+    // Always register Comet's cache serializer class.
+    // The serializer itself decides at runtime whether to use Comet cache format
+    // or delegate to DefaultCachedBatchSerializer based on
+    // spark.comet.exec.inMemoryCache.enabled.
+    val serializerKey = "spark.sql.cache.serializer"
+    val serializerValue =
+      "org.apache.spark.sql.comet.execution.arrow.ArrowCachedBatchSerializer"
+    extraConfs.put(serializerKey, serializerValue)
+    sc.conf.set(serializerKey, serializerValue)
+    logInfo(s"Auto-set $serializerKey=$serializerValue")
 
     // register CometSparkSessionExtensions if it isn't already registered
     CometDriverPlugin.registerCometSessionExtension(sc.conf)
@@ -71,7 +75,6 @@ class CometDriverPlugin extends DriverPlugin with Logging with ShimCometDriverPl
       val execMemOverhead = if (sc.getConf.contains(EXECUTOR_MEMORY_OVERHEAD.key)) {
         sc.getConf.getSizeAsMb(EXECUTOR_MEMORY_OVERHEAD.key)
       } else {
-        // By default, executorMemory * spark.executor.memoryOverheadFactor, with minimum of 384MB
         val executorMemory =
           sc.getConf.getSizeAsMb(EXECUTOR_MEMORY.key, EXECUTOR_MEMORY_DEFAULT)
         val memoryOverheadFactor = sc.getConf.get(EXECUTOR_MEMORY_OVERHEAD_FACTOR)
@@ -94,7 +97,7 @@ class CometDriverPlugin extends DriverPlugin with Logging with ShimCometDriverPl
       logInfo("Comet is running in unified memory mode and sharing off-heap memory with Spark")
     }
 
-    Collections.emptyMap[String, String]
+    extraConfs
   }
 
   override def receive(message: Any): AnyRef = super.receive(message)

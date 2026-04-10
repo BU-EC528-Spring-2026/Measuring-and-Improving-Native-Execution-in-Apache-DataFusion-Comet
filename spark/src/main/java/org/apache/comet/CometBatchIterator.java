@@ -80,15 +80,15 @@ public class CometBatchIterator {
       return -1;
     }
 
-    System.err.println(
-        "DEBUG CometBatchIterator.next: currentBatch.numCols="
-            + currentBatch.numCols()
-            + " currentBatch.numRows="
-            + currentBatch.numRows()
-            + " arrayAddrs.length="
-            + arrayAddrs.length
-            + " schemaAddrs.length="
-            + schemaAddrs.length);
+    // System.err.println(
+    //    "DEBUG CometBatchIterator.next: currentBatch.numCols="
+    //        + currentBatch.numCols()
+    //        + " currentBatch.numRows="
+    //        + currentBatch.numRows()
+    //        + " arrayAddrs.length="
+    //        + arrayAddrs.length
+    //        + " schemaAddrs.length="
+    //        + schemaAddrs.length);
 
     // export the batch using the Arrow C Data Interface
     int numRows = nativeUtil.exportBatch(arrayAddrs, schemaAddrs, currentBatch);

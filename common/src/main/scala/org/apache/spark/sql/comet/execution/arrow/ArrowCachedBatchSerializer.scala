@@ -19,6 +19,8 @@
 
 package org.apache.spark.sql.comet.execution.arrow
 
+import scala.collection.JavaConverters._
+
 import org.apache.spark.TaskContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -66,17 +68,13 @@ class ArrowCachedBatchSerializer extends CachedBatchSerializer {
       storageLevel: StorageLevel,
       conf: SQLConf): RDD[CachedBatch] = {
 
-    if (!enabled(conf)) {
-      fallback.convertColumnarBatchToCachedBatch(input, schema, storageLevel, conf)
-    } else {
-      input.mapPartitions { batches =>
-        Utils.serializeBatches(batches).map { case (rows, buffer) =>
-          CometCachedBatch(
-            numRows = rows.toInt,
-            sizeInBytes = buffer.size,
-            stats = InternalRow.empty,
-            bytes = buffer)
-        }
+    input.mapPartitions { batches =>
+      Utils.serializeBatches(batches).map { case (rows, buffer) =>
+        CometCachedBatch(
+          numRows = rows.toInt,
+          sizeInBytes = buffer.size,
+          stats = InternalRow.empty,
+          bytes = buffer)
       }
     }
   }
@@ -87,41 +85,56 @@ class ArrowCachedBatchSerializer extends CachedBatchSerializer {
       selectedAttributes: Seq[Attribute],
       conf: SQLConf): RDD[ColumnarBatch] = {
 
-    if (!enabled(conf)) {
-      fallback.convertCachedBatchToColumnarBatch(input, cacheAttributes, selectedAttributes, conf)
-    } else {
-      val selectedIndices =
-        if (selectedAttributes.isEmpty) {
-          cacheAttributes.indices.toArray
-        } else {
-          val byExprId = cacheAttributes.zipWithIndex.map { case (attr, idx) =>
-            attr.exprId -> idx
-          }.toMap
+    val selectedIndices =
+      if (selectedAttributes.isEmpty) {
+        cacheAttributes.indices.toArray
+      } else {
+        val byExprId = cacheAttributes.zipWithIndex.map { case (attr, idx) =>
+          attr.exprId -> idx
+        }.toMap
 
-          selectedAttributes.map { attr =>
-            byExprId.getOrElse(
-              attr.exprId,
-              throw new IllegalStateException(
-                s"Could not resolve selected attribute ${attr.name} from cache attributes"))
-          }.toArray
-        }
+        selectedAttributes.map { attr =>
+          byExprId.getOrElse(
+            attr.exprId,
+            throw new IllegalStateException(
+              s"Could not resolve selected attribute ${attr.name} from cache attributes"))
+        }.toArray
+      }
 
-      input.mapPartitions { it =>
-        it.flatMap {
+    input.mapPartitions { it =>
+      val batches = it.toVector
+
+      if (batches.isEmpty) {
+        Iterator.empty
+
+      } else if (batches.head.isInstanceOf[CometCachedBatch]) {
+
+        batches.iterator.flatMap {
           case cb: CometCachedBatch =>
             Utils.decodeBatches(cb.bytes, "CometCache").map { batch =>
               if (selectedIndices.length == batch.numCols()) {
                 batch
               } else {
-                val cols = selectedIndices.map(i => batch.column(i).asInstanceOf[ColumnVector])
+                val cols =
+                  selectedIndices.map(i => batch.column(i).asInstanceOf[ColumnVector])
                 new ColumnarBatch(cols, batch.numRows())
               }
             }
 
           case other =>
             throw new IllegalStateException(
-              s"Expected CometCachedBatch, got ${other.getClass.getName}")
+              s"Mixed cached batch types in one partition: ${other.getClass.getName}")
         }
+
+      } else {
+
+        fallback
+          .convertCachedBatchToColumnarBatch(
+            input.sparkContext.parallelize(batches, 1),
+            cacheAttributes,
+            selectedAttributes,
+            conf)
+          .toLocalIterator
       }
     }
   }

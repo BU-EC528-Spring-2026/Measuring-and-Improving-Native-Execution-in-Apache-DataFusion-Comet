@@ -203,6 +203,27 @@ case class CometExecRule(session: SparkSession) extends Rule[SparkPlan] {
       case op if isCometScan(op) =>
         convertToComet(op, CometScanWrapper).getOrElse(op)
 
+      // case scan: InMemoryTableScanExec
+      //    if CometConf.COMET_EXEC_IN_MEMORY_CACHE_ENABLED.get(conf) =>
+      //  convertToComet(scan, CometInMemoryTableScanExec).getOrElse(scan)
+
+      case scan: InMemoryTableScanExec
+          if CometConf.COMET_EXEC_IN_MEMORY_CACHE_ENABLED.get(conf) =>
+        val serializer = scan.relation.cacheBuilder.serializer
+        val serializerClass = serializer.getClass.getName
+        val expectedSerializerClass =
+          "org.apache.spark.sql.comet.execution.arrow.ArrowCachedBatchSerializer"
+
+        if (serializerClass == expectedSerializerClass) {
+          convertToComet(scan, CometInMemoryTableScanExec).getOrElse(scan)
+        } else {
+          withInfo(
+            scan,
+            s"Comet in-memory cache requires $expectedSerializerClass, " +
+              s"but found $serializerClass")
+          scan
+        }
+
       case op if shouldApplySparkToColumnar(conf, op) =>
         convertToComet(op, CometSparkToColumnarExec).getOrElse(op)
 
