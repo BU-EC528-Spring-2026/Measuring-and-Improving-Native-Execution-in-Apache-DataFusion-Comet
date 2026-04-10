@@ -148,6 +148,7 @@ Exit the session (`CTRL+C`), restart the session using the same commands as befo
 
 ### Step 3
 Exit the session (`CTRL+C`), restart the session again, then copy and paste the **entire code** from `countif_mode_testing.txt`.entire code from the file titled 'countif_mode_testing.txt' & paste it in the session
+
 ---
 
 ## Notes
