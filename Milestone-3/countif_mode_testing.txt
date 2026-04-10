@@ -1,0 +1,53 @@
+// --------- COUNT_IF() Aggregate Function Edge Case Testing ----------------------------------------------------------------------------------------
+
+// Single row - true condition
+sql("SELECT count_if(col > 0) FROM VALUES (42) AS t(col)").show(false)
+sql("SELECT count_if(col > 0) FROM VALUES (42) AS t(col)").explain("formatted")
+
+// Single row - false condition
+sql("SELECT count_if(col > 100) FROM VALUES (42) AS t(col)").show(false)
+
+// Mixed true/false with nulls (nulls must be ignored)
+sql("SELECT count_if(col > 0) FROM VALUES (1), (2), (-1), (NULL) AS t(col)").show(false)
+sql("SELECT count_if(col > 0) FROM VALUES (1), (2), (-1), (NULL) AS t(col)").explain("formatted")
+
+// Grouped case
+sql("SELECT grp, count_if(v > 0) FROM VALUES (1,1), (1,-2), (1,3), (2,-5), (2,NULL), (2,10) AS t(grp,v) GROUP BY grp").show(false)
+sql("SELECT grp, count_if(v > 0) FROM VALUES (1,1), (1,-2), (1,3), (2,-5), (2,NULL), (2,10) AS t(grp,v) GROUP BY grp").explain("formatted")
+
+// All conditions false
+sql("SELECT count_if(col > 0) FROM VALUES (-1), (-2), (-3) AS t(col)").show(false)
+
+// All nulls (must return 0)
+sql("SELECT count_if(col > 0) FROM VALUES (CAST(NULL AS INT)), (CAST(NULL AS INT)) AS t(col)").show(false)
+
+// Complex condition with multiple columns
+sql("SELECT count_if(a > b) FROM VALUES (1,0), (2,3), (5,4), (NULL,1) AS t(a,b)").show(false)
+
+
+
+
+// --------- MODE() Aggregate Function Edge Case Testing ----------------------------------------------------------------------------------------
+// Single row case
+sql("SELECT mode(col) FROM VALUES (42) AS t(col)").show(false)
+sql("SELECT mode(col) FROM VALUES (42) AS t(col)").explain("formatted")
+
+// Negative integers
+sql("SELECT mode(col) FROM VALUES (-1), (-1), (2) AS t(col)").show(false)
+sql("SELECT mode(col) FROM VALUES (-1), (-1), (2) AS t(col)").explain("formatted")
+
+// Grouped tie case
+sql("SELECT grp, mode(v) FROM VALUES (1,1), (1,1), (1,2), (1,2), (2,3), (2,3), (2,4), (2,4) AS t(grp,v) GROUP BY grp").show(false)
+sql("SELECT grp, mode(v) FROM VALUES (1,1), (1,1), (1,2), (1,2), (2,3), (2,3), (2,4), (2,4) AS t(grp,v) GROUP BY grp").explain("formatted")
+
+// All-Null case
+sql("SELECT mode(col) FROM VALUES (CAST(NULL AS INT)), (CAST(NULL AS INT)) AS t(col)").show(false)
+sql("SELECT mode(col) FROM VALUES (CAST(NULL AS INT)), (CAST(NULL AS INT)) AS t(col)").explain("formatted")
+
+// Unsigned & Other Cast Type cases
+sql("SELECT mode(CAST(col AS SMALLINT)) FROM VALUES (1), (1), (2) AS t(col)").show(false)
+sql("SELECT mode(CAST(col AS SMALLINT)) FROM VALUES (1), (1), (2) AS t(col)").explain("formatted")
+sql("SELECT mode(CAST(col AS BIGINT)) FROM VALUES (1), (1), (2) AS t(col)").show(false)
+sql("SELECT mode(CAST(col AS BIGINT)) FROM VALUES (1), (1), (2) AS t(col)").explain("formatted")
+sql("SELECT mode(CAST(col AS TINYINT)) FROM VALUES (1), (1), (2) AS t(col)").show(false)
+sql("SELECT mode(CAST(col AS TINYINT)) FROM VALUES (1), (1), (2) AS t(col)").explain("formatted")
