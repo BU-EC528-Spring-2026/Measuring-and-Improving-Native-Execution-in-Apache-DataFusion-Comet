@@ -1,0 +1,51 @@
+// ---------- Paste this Code in the First Spark Session ------------------------------
+import org.apache.spark.sql.internal.SQLConf
+import org.apache.comet.CometConf
+
+// Set configs
+spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_ENABLED.key, "false")
+spark.conf.set(CometConf.COMET_SHUFFLE_MODE.key, "jvm")
+spark.conf.set(SQLConf.CACHE_VECTORIZED_READER_ENABLED.key, "true")
+spark.conf.set("spark.comet.sparkToColumnar.enabled", true)
+
+// Andy Grove's test
+spark.range(1000)
+  .selectExpr("id as key", "id % 8 as value")
+  .toDF("key", "value")
+  .selectExpr("key", "value", "key+1")
+  .createOrReplaceTempView("abc")
+
+spark.catalog.cacheTable("abc")
+
+val df = spark.sql("SELECT * FROM abc").groupBy("key").count()
+df.explain("formatted")
+df.collect()
+
+// ------------------------------------------------------------------------------------------
+
+
+// ----------- Paste the below Code in the NEW/Second Spark Session -------------------------
+import org.apache.spark.sql.internal.SQLConf
+import org.apache.comet.CometConf
+
+// Set configs
+spark.conf.set(SQLConf.ADAPTIVE_EXECUTION_ENABLED.key, "false")
+spark.conf.set(CometConf.COMET_SHUFFLE_MODE.key, "jvm")
+spark.conf.set(SQLConf.CACHE_VECTORIZED_READER_ENABLED.key, "true")
+spark.conf.set("spark.comet.sparkToColumnar.enabled", true)
+
+// Enable our newly created Comet-Native In-Memory Cache Flag this time
+spark.conf.set("spark.comet.exec.inMemoryCache.enabled", true)
+
+// Andy Grove's test
+spark.range(1000)
+  .selectExpr("id as key", "id % 8 as value")
+  .toDF("key", "value")
+  .selectExpr("key", "value", "key+1")
+  .createOrReplaceTempView("abc")
+
+spark.catalog.cacheTable("abc")
+
+val df = spark.sql("SELECT * FROM abc").groupBy("key").count()
+df.explain("formatted")
+df.collect()
