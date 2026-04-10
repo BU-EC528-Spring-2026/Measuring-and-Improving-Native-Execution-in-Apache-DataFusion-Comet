@@ -13,6 +13,7 @@ Other material (Demo Video, Design Doc, Quiz Question) found [here](/Milestone-2
 
 ## Milestone 3
 [Milestone-3 Demo Slides](https://docs.google.com/presentation/d/1liVPq-2OZg4CyYeFlQZARmsziIVs8OmgreH_oeDuIms/edit?slide=id.p#slide=id.p)
+
 [Milestone-3 Demo Video] (https://drive.google.com/file/d/1f3r53nFtPuczrDkNT1W5-cgWTEfFcsGu/view?usp=sharing)
 
-Other material (Demo Video, Design Doc, Quiz Question) found [here](/Milestone-3)
+Other material (Design Doc, Quiz Question, Milestone-3 ReadMe &.txt files) found [here](/Milestone-3)
