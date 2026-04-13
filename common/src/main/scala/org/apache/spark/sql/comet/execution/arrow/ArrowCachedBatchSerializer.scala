@@ -27,7 +27,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, Expression}
 import org.apache.spark.sql.columnar.{CachedBatch, CachedBatchSerializer}
 import org.apache.spark.sql.comet.util.Utils
-import org.apache.spark.sql.execution.columnar.DefaultCachedBatchSerializer
+import org.apache.spark.sql.execution.columnar.{DefaultCachedBatch, DefaultCachedBatchSerializer}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{StructField, StructType}
 import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
@@ -58,8 +58,10 @@ class ArrowCachedBatchSerializer extends CachedBatchSerializer {
     })
   }
 
-  override def supportsColumnarInput(schema: Seq[Attribute]): Boolean = true
-
+  override def supportsColumnarInput(schema: Seq[Attribute]): Boolean = {
+    val activeConf = SQLConf.get
+    activeConf != null && enabled(activeConf)
+  }
   override def supportsColumnarOutput(schema: StructType): Boolean = true
 
   override def convertColumnarBatchToCachedBatch(
@@ -101,15 +103,16 @@ class ArrowCachedBatchSerializer extends CachedBatchSerializer {
         }.toArray
       }
 
-    input.mapPartitions { it =>
-      val batches = it.toVector
+    val batchTypes = input.map(_.getClass.getName).distinct().collect()
 
-      if (batches.isEmpty) {
-        Iterator.empty
-
-      } else if (batches.head.isInstanceOf[CometCachedBatch]) {
-
-        batches.iterator.flatMap {
+    if (batchTypes.isEmpty) {
+      input.sparkContext.emptyRDD[ColumnarBatch]
+    } else if (batchTypes.length > 1) {
+      throw new IllegalStateException(
+        s"Mixed cached batch types are not supported: ${batchTypes.mkString(", ")}")
+    } else if (batchTypes.head == classOf[CometCachedBatch].getName) {
+      input.mapPartitions { it =>
+        it.flatMap {
           case cb: CometCachedBatch =>
             Utils.decodeBatches(cb.bytes, "CometCache").map { batch =>
               if (selectedIndices.length == batch.numCols()) {
@@ -123,19 +126,13 @@ class ArrowCachedBatchSerializer extends CachedBatchSerializer {
 
           case other =>
             throw new IllegalStateException(
-              s"Mixed cached batch types in one partition: ${other.getClass.getName}")
+              s"Expected CometCachedBatch, got ${other.getClass.getName}")
         }
-
-      } else {
-
-        fallback
-          .convertCachedBatchToColumnarBatch(
-            input.sparkContext.parallelize(batches, 1),
-            cacheAttributes,
-            selectedAttributes,
-            conf)
-          .toLocalIterator
       }
+    } else if (batchTypes.head == classOf[DefaultCachedBatch].getName) {
+      fallback.convertCachedBatchToColumnarBatch(input, cacheAttributes, selectedAttributes, conf)
+    } else {
+      throw new IllegalStateException(s"Unsupported cached batch type: ${batchTypes.head}")
     }
   }
 
@@ -175,10 +172,56 @@ class ArrowCachedBatchSerializer extends CachedBatchSerializer {
       cacheAttributes: Seq[Attribute],
       selectedAttributes: Seq[Attribute],
       conf: SQLConf): RDD[InternalRow] = {
-    if (!enabled(conf)) {
+
+    val selectedIndices =
+      if (selectedAttributes.isEmpty) {
+        cacheAttributes.indices.toArray
+      } else {
+        val byExprId = cacheAttributes.zipWithIndex.map { case (attr, idx) =>
+          attr.exprId -> idx
+        }.toMap
+
+        selectedAttributes.map { attr =>
+          byExprId.getOrElse(
+            attr.exprId,
+            throw new IllegalStateException(
+              s"Could not resolve selected attribute ${attr.name} from cache attributes"))
+        }.toArray
+      }
+
+    val batchTypes = input.map(_.getClass.getName).distinct().collect()
+
+    if (batchTypes.isEmpty) {
+      input.sparkContext.emptyRDD[InternalRow]
+    } else if (batchTypes.length > 1) {
+      throw new IllegalStateException(
+        s"Mixed cached batch types are not supported: ${batchTypes.mkString(", ")}")
+    } else if (batchTypes.head == classOf[DefaultCachedBatch].getName) {
       fallback.convertCachedBatchToInternalRow(input, cacheAttributes, selectedAttributes, conf)
+    } else if (batchTypes.head == classOf[CometCachedBatch].getName) {
+      input.mapPartitions { it =>
+        it.flatMap {
+          case cb: CometCachedBatch =>
+            Utils.decodeBatches(cb.bytes, "CometCache").flatMap { batch =>
+              val projectedBatch =
+                if (selectedIndices.length == batch.numCols()) {
+                  batch
+                } else {
+                  val cols =
+                    selectedIndices.map(i => batch.column(i).asInstanceOf[ColumnVector])
+                  new ColumnarBatch(cols, batch.numRows())
+                }
+
+              projectedBatch.rowIterator().asScala
+            }
+
+          case other =>
+            throw new IllegalStateException(
+              s"Expected CometCachedBatch, got ${other.getClass.getName}")
+        }
+      }
     } else {
-      throw new UnsupportedOperationException("Row fallback not supported in Comet cache mode")
+      throw new IllegalStateException(s"Unsupported cached batch type: ${batchTypes.head}")
     }
   }
 
