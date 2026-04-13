@@ -73,6 +73,8 @@ cd ..
 
 ./mvnw clean
 ./mvnw install -DskipTests -Drat.skip=true
+
+export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
 ```
 
 ---
