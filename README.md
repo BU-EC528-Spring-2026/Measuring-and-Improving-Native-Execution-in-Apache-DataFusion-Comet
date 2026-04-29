@@ -21,6 +21,8 @@ Other material (Design Doc, Quiz Question, Milestone-3 ReadMe & .txt files) foun
 ## Final Presentation
 [Final Presentation Slides](https://docs.google.com/presentation/d/131WhtWf_cFzDItmBn0v-YS1SMYJyMx2uNxJLU0jRMvM/edit?slide=id.p#slide=id.p)
 
-[Final Demo Video]()
+[Video Presentation Slides](https://docs.google.com/presentation/d/11ZG4UFPY3L5jZnNx3QqNb1AYtBHKMuFgoseYzXN8TQU/edit?slide=id.p1#slide=id.p1)
+
+[Video Presentation]()
 
 Other material (Design Doc, Final Demo ReadMe & .txt files) found [here](/)
