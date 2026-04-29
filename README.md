@@ -23,6 +23,6 @@ Other material (Design Doc, Quiz Question, Milestone-3 ReadMe & .txt files) foun
 
 [Video Presentation Slides](https://docs.google.com/presentation/d/11ZG4UFPY3L5jZnNx3QqNb1AYtBHKMuFgoseYzXN8TQU/edit?slide=id.p1#slide=id.p1)
 
-[Video Presentation]()
+[Video Presentation](https://www.loom.com/share/915d2fc8395a4ff9a32c5bb508ce45c3)
 
 Other material (Design Doc, Final Demo ReadMe & .txt files) found [here](/)
