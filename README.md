@@ -18,7 +18,7 @@ Other material (Demo Video, Design Doc, Quiz Question) found [here](/Milestone-2
 
 Other material (Design Doc, Quiz Question, Milestone-3 ReadMe &.txt files) found [here](/Milestone-3)
 
-## Milestone 3
+## Final Presentation
 [Final Presentation Slides](https://docs.google.com/presentation/d/131WhtWf_cFzDItmBn0v-YS1SMYJyMx2uNxJLU0jRMvM/edit?slide=id.p#slide=id.p)
 
 [Milestone-3 Demo Video]()
