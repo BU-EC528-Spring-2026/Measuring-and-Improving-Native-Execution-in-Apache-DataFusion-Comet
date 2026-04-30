@@ -25,4 +25,4 @@ Other material (Design Doc, Quiz Question, Milestone-3 ReadMe & .txt files) foun
 
 [Video Presentation](https://www.loom.com/share/915d2fc8395a4ff9a32c5bb508ce45c3)
 
-Other material (Design Doc, Final Demo ReadMe & .txt files) found [here](/)
+[Final Design Doc](https://github.com/BU-EC528-Spring-2026/Measuring-and-Improving-Native-Execution-in-Apache-DataFusion-Comet/blob/main/EC%20528%20Final%20Design%20Doc.pdf)
