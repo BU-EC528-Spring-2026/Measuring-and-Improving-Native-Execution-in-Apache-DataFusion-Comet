@@ -9,7 +9,7 @@ Other material (Design Doc, Quiz Question) found in Milestone-1 Demo Slides & Qu
 ## Milestone 2
 [Milestone-2 Demo Slides](https://docs.google.com/presentation/d/1OnotfQsGZAIYiK2d7QiZ56sUyK0IAfdN_5ipdl0tRgg/edit?usp=sharing)
 
-Other material (Demo Video, Design Doc, Quiz Question) found [here](/Milestone-2)
+Other material (Design Doc, Quiz Question) found [here](/Milestone-2)
 
 ## Milestone 3
 [Milestone-3 Demo Slides](https://docs.google.com/presentation/d/1liVPq-2OZg4CyYeFlQZARmsziIVs8OmgreH_oeDuIms/edit?slide=id.p#slide=id.p)
