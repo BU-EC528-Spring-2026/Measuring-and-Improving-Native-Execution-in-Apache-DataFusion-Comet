@@ -29,12 +29,12 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 
 ---
 
-### Apache Spark 3.5.8
+### Apache Spark 4.1.0
 
 ```bash
-wget https://archive.apache.org/dist/spark/spark-3.5.8/spark-3.5.8-bin-hadoop3.tgz
-tar -xzf spark-3.5.8-bin-hadoop3.tgz
-export SPARK_HOME=$PWD/spark-3.5.8-bin-hadoop3
+wget https://archive.apache.org/dist/spark/spark-4.1.0/spark-4.1.0-bin-hadoop3.tgz
+tar -xzf spark-4.1.0-bin-hadoop3.tgz
+export SPARK_HOME=$PWD/spark-4.1.0-bin-hadoop3
 ```
 
 ---
@@ -74,7 +74,7 @@ cd ..
 ./mvnw clean
 ./mvnw install -DskipTests -Drat.skip=true
 
-export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+export COMET_JAR=$(ls spark/target/comet-spark-spark4.1_2.13-*.jar | grep -v sources | head -n 1)
 ```
 
 ---
@@ -124,9 +124,9 @@ org/apache/comet/<platform>/<arch>/libcomet.*
 ## Start the Spark Session with Comet
 
 ```bash
-export SPARK_HOME=~/spark-3.5.8-bin-hadoop3
+export SPARK_HOME=$PWD/spark-4.1.0-bin-hadoop3
 export JAVA_HOME=$(/usr/libexec/java_home -v 17)
-export COMET_JAR=$(ls spark/target/comet-spark-spark3.5_2.12-*.jar | grep -v sources | head -n 1)
+export COMET_JAR=$(ls spark/target/comet-spark-spark4.1_2.13-*.jar | grep -v sources | head -n 1)
 
 $SPARK_HOME/bin/spark-shell \
   --jars "$COMET_JAR" \
