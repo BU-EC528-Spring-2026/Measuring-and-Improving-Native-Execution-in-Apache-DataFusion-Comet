@@ -140,17 +140,6 @@ $SPARK_HOME/bin/spark-shell \
   --conf spark.comet.exec.localTableScan.enabled=true \
   --conf spark.shuffle.manager=org.apache.spark.sql.comet.execution.shuffle.CometShuffleManager
 ```
-## Grader Instructions
-
-### Step 1
-Start a Spark session, then copy and paste the **first part** of code from `inMemoryCache-comparision.txt` into the session.
-
-### Step 2
-Exit the session (`CTRL+C`), restart the session using the same commands as before, then copy and paste the **second part** of code from `inMemoryCache-comparision.txt`.
-
-### Step 3
-Exit the session (`CTRL+C`), restart the session again, then copy and paste the **entire code** from `countif_mode_testing.txt` & paste it in the session
-
 ---
 
 ## Notes
