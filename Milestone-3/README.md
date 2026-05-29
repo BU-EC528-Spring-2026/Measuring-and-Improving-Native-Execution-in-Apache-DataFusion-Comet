@@ -121,6 +121,22 @@ org/apache/comet/<platform>/<arch>/libcomet.*
 
 ---
 
+## Maven Tests
+
+Maven tests do NOT use our manually patched jar.
+
+You need the native library copied into the Maven test resource path.
+
+Do this from repo root(MacOS Intel CPU):
+
+```bash
+mkdir -p spark/target/test-classes/org/apache/comet/darwin/x86_64
+
+cp native/target/release/libcomet.dylib \
+  spark/target/test-classes/org/apache/comet/darwin/x86_64/
+```
+---
+
 ## Start the Spark Session with Comet
 
 ```bash
